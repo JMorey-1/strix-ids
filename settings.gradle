@@ -1,0 +1,5 @@
+rootProject.name = 'strix'
+
+include 'strix-ids'
+include 'target-app'
+include 'traffic-generator'
