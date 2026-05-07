@@ -31,10 +31,8 @@ public class FeatureExtractionService {
     private final ConcurrentHashMap<String, List<RequestEvent>> eventBuffer = new ConcurrentHashMap<>();
 
     public double[] extractFeatures(String ip, RequestEvent incoming) {
-        // Create a new event list for this IP if it has not been seen before.
-        eventBuffer.putIfAbsent(ip, new ArrayList<>());
-
-        List<RequestEvent> events = eventBuffer.get(ip);
+        // Create or retrieve the event list for this IP.
+        List<RequestEvent> events = eventBuffer.computeIfAbsent(ip, key -> new ArrayList<>());
 
         /*
          * The map itself is thread-safe, but the ArrayList inside it is not.
