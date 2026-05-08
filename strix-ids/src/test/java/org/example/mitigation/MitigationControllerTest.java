@@ -1,0 +1,80 @@
+package org.example.mitigation;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(MitigationController.class)
+class MitigationControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private MitigationService mitigationService;
+
+    @Test
+    void getSuspiciousIps_ShouldReturnSuspiciousRecords() throws Exception {
+        // Create test record
+        MitigationRecord record = new MitigationRecord("10.0.0.5");
+
+        when(mitigationService.getSuspiciousRecords())
+                .thenReturn(List.of(record));
+
+        // Test suspicious IPs endpoint
+        mockMvc.perform(get("/api/suspicious-ips"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].ipAddress").value("10.0.0.5"))
+                .andExpect(jsonPath("$[0].status").value("WATCH"))
+                .andExpect(jsonPath("$[0].watchCount").value(0))
+                .andExpect(jsonPath("$[0].alertCount").value(0))
+                .andExpect(jsonPath("$[0].suspicionScore").value(0));
+
+        // Check service called
+        verify(mitigationService).getSuspiciousRecords();
+    }
+
+    @Test
+    void getBlacklist_ShouldReturnBlockedRecords() throws Exception {
+        // Create blocked record
+        MitigationRecord record = new MitigationRecord("10.0.0.9");
+        record.registerAlert("Alert 1");
+        record.registerAlert("Alert 2");
+        record.registerAlert("Alert 3");
+
+        when(mitigationService.getBlacklist())
+                .thenReturn(List.of(record));
+
+        // Test blacklist endpoint
+        mockMvc.perform(get("/api/blacklist"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].ipAddress").value("10.0.0.9"))
+                .andExpect(jsonPath("$[0].status").value("BLOCKED"))
+                .andExpect(jsonPath("$[0].alertCount").value(3))
+                .andExpect(jsonPath("$[0].suspicionScore").value(9));
+
+        // Check service called
+        verify(mitigationService).getBlacklist();
+    }
+
+    @Test
+    void resetMitigationState_ShouldReturnNoContent() throws Exception {
+        // Test reset endpoint
+        mockMvc.perform(post("/api/mitigation/reset"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        // Check service called
+        verify(mitigationService).resetMitigationState();
+    }
+}
