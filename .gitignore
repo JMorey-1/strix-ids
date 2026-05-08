@@ -41,3 +41,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+data/
+*.db
+*.mv.db
+*.trace.db
