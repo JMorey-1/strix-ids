@@ -33,9 +33,7 @@ public class MitigationService {
 
         if (level == IdsEventLevel.WATCH) {
             record.registerWatch(reason);
-        }
-
-        if (level == IdsEventLevel.ALERT) {
+        } else {
             record.registerAlert(reason);
         }
 
