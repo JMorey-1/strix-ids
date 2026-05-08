@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Page setup -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strix Dashboard</title>
+
+    <!-- Dashboard styles -->
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+<div class="app-shell">
+
+    <!-- Sidebar area -->
+    <aside class="sidebar">
+
+        <!-- Project branding -->
+        <div class="brand">
+            <div class="brand-title">STRIX</div>
+            <div class="brand-subtitle">Behaviour-Based IDS</div>
+        </div>
+
+        <!-- Navigation menu -->
+        <nav class="nav-menu">
+            <div class="nav-section-title">Console</div>
+            <span class="nav-item active">Dashboard</span>
+        </nav>
+
+        <!-- System summary -->
+        <div class="sidebar-footer panel">
+            <div class="panel-title">System</div>
+            <div class="status-line">
+                <span class="label">Mode</span>
+                <span class="badge badge-yellow" id="system-mode">WAITING</span>
+            </div>
+            <div class="status-line">
+                <span class="label">Engine</span>
+                <span class="value" id="engine-status">Not Trained</span>
+            </div>
+            <div class="status-line">
+                <span class="label">Uptime</span>
+                <span class="value" id="uptime">00:00:00</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main dashboard content -->
+    <main class="main-content">
+
+        <!-- Dashboard header -->
+        <header class="topbar panel">
+            <div>
+                <h1>Strix Dashboard</h1>
+                <p class="subtitle">Live intrusion monitoring console</p>
+            </div>
+        </header>
+
+        <!-- Dashboard panels -->
+        <section class="dashboard-grid">
+
+            <!-- Detection state panel -->
+            <div class="panel hero-panel">
+                <div class="panel-title">Detection State</div>
+                <div class="hero-content">
+                    <div class="hero-status waiting" id="hero-status">
+                        <span class="pulse"></span>
+                        <span id="hero-status-text">Waiting for model training</span>
+                    </div>
+                    <p id="hero-description">
+                        Strix has started but the anomaly model has not been trained yet.
+                        Run the warm-up and training phase before starting detection traffic.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Live IDS console -->
+            <div class="panel fixed-panel console-panel">
+                <div class="panel-title">Live IDS Console</div>
+                <div class="console-feed" id="ids-console-feed">
+                    <div class="console-line">
+                        <span class="console-message">Waiting for IDS events...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suspicious IP table -->
+            <div class="panel fixed-panel suspicious-panel">
+                <div class="panel-title">Suspicious IPs</div>
+                <div class="table-scroll">
+                    <table class="data-table">
+                        <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>Score</th>
+                            <th>Status</th>
+                        </tr>
+                        </thead>
+                        <tbody id="suspicious-ips-body">
+                        <tr>
+                            <td colspan="3">Loading suspicious IP data...</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent alert feed -->
+            <div class="panel fixed-panel alerts-panel">
+                <div class="panel-title">Recent Alerts</div>
+                <div class="feed" id="alerts-feed">
+                    <div class="feed-item">
+                        <span class="feed-text">Loading alerts...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Request summary cards -->
+            <div class="panel fixed-panel summary-panel">
+                <div class="panel-title">Request Summary</div>
+                <div class="stat-blocks">
+                    <div class="stat-card">
+                        <span class="stat-label">Normal Requests</span>
+                        <span class="stat-value" id="normal-request-count">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Flagged Requests</span>
+                        <span class="stat-value" id="flagged-request-count">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Alert Events</span>
+                        <span class="stat-value" id="alert-event-count">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model status panel -->
+            <div class="panel fixed-panel model-panel">
+                <div class="panel-title">Model Status</div>
+                <div class="status-list">
+                    <div class="status-line">
+                        <span class="label">Algorithm</span>
+                        <span class="value" id="model-algorithm">Isolation Forest</span>
+                    </div>
+                    <div class="status-line">
+                        <span class="label">Training State</span>
+                        <span class="value" id="model-training-state">Waiting</span>
+                    </div>
+                    <div class="status-line">
+                        <span class="label">Window Size</span>
+                        <span class="value" id="model-window-size">-</span>
+                    </div>
+                    <div class="status-line">
+                        <span class="label">Confidence</span>
+                        <span class="value" id="model-confidence">Unavailable</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Blacklist feed -->
+            <div class="panel fixed-panel blacklist-panel">
+                <div class="panel-title">Blacklist</div>
+                <div class="feed" id="blacklist-feed">
+                    <div class="feed-item">
+                        <span class="feed-text">Loading blacklist data...</span>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+</div>
+
+<!-- Dashboard behaviour -->
+<script src="/js/dashboard.js?v=5"></script>
+</body>
+</html>
