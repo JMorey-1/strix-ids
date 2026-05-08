@@ -1,0 +1,531 @@
+:root {
+    /* Main dashboard colour palette */
+    --bg: #0a0f14;
+    --panel: #101820;
+    --panel-alt: #0d141b;
+    --border: #22303c;
+    --text: #d7e1ea;
+    --muted: #8a9aa8;
+    --accent: #58d6ff;
+    --green: #33d17a;
+    --yellow: #f5c451;
+    --red: #ff6b6b;
+    --shadow: rgba(0, 0, 0, 0.28);
+}
+
+/* Makes element sizing easier to control */
+* {
+    box-sizing: border-box;
+}
+
+/* Base page styling */
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    min-height: 100vh;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+/* Main two-column layout: sidebar + dashboard */
+.app-shell {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    min-height: 100vh;
+}
+
+/* Left side console navigation */
+.sidebar {
+    background: #081017;
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Strix title area */
+.brand {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+}
+
+.brand-subtitle {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Sidebar menu */
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.nav-section-title {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.nav-item {
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    color: var(--text);
+    transition: 0.2s ease;
+}
+
+/* Highlight active or hovered menu item */
+.nav-item:hover,
+.nav-item.active {
+    border-color: var(--border);
+    background: rgba(88, 214, 255, 0.08);
+    color: var(--accent);
+}
+
+/* Main content area */
+.main-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Shared panel styling */
+.panel {
+    background: linear-gradient(180deg, var(--panel), var(--panel-alt));
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 30px var(--shadow);
+}
+
+/* Top dashboard header */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 18px 22px;
+}
+
+.topbar h1 {
+    margin: 0;
+    font-size: 28px;
+    color: var(--accent);
+}
+
+.subtitle {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* Optional small status cards in the topbar */
+.topbar-status {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mini-stat {
+    min-width: 100px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.mini-label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.mini-value {
+    font-size: 18px;
+    color: var(--text);
+}
+
+.mini-value.warning {
+    color: var(--yellow);
+}
+
+.mini-value.danger {
+    color: var(--red);
+}
+
+/* Main dashboard grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 20px;
+}
+
+/* Hero panel spans the full dashboard width */
+.hero-panel {
+    grid-column: 1 / -1;
+}
+
+.hero-content {
+    padding: 20px;
+}
+
+/* Main detection state display */
+.hero-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    font-size: 15px;
+}
+
+/* Hero state colours */
+.hero-status.waiting {
+    color: var(--red);
+}
+
+.hero-status.training {
+    color: var(--yellow);
+}
+
+.hero-status.monitoring {
+    color: var(--green);
+}
+
+/* Small glowing state dot */
+.pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 12px currentColor;
+}
+
+/* Panel headings */
+.panel-title {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Keeps live dashboard panels from stretching when data grows */
+.fixed-panel {
+    height: 300px;
+    min-height: 300px;
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.fixed-panel .panel-title {
+    flex: 0 0 auto;
+}
+
+/* Scroll only inside the body of fixed panels */
+.fixed-panel > .feed,
+.fixed-panel > .stat-blocks,
+.fixed-panel > .status-list,
+.fixed-panel > .table-scroll,
+.fixed-panel > .console-feed {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Shared scrollbar styling for fixed panel content */
+.fixed-panel > .feed::-webkit-scrollbar,
+.fixed-panel > .stat-blocks::-webkit-scrollbar,
+.fixed-panel > .status-list::-webkit-scrollbar,
+.fixed-panel > .table-scroll::-webkit-scrollbar,
+.fixed-panel > .console-feed::-webkit-scrollbar {
+    width: 8px;
+}
+
+.fixed-panel > .feed::-webkit-scrollbar-track,
+.fixed-panel > .stat-blocks::-webkit-scrollbar-track,
+.fixed-panel > .status-list::-webkit-scrollbar-track,
+.fixed-panel > .table-scroll::-webkit-scrollbar-track,
+.fixed-panel > .console-feed::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.fixed-panel > .feed::-webkit-scrollbar-thumb,
+.fixed-panel > .stat-blocks::-webkit-scrollbar-thumb,
+.fixed-panel > .status-list::-webkit-scrollbar-thumb,
+.fixed-panel > .table-scroll::-webkit-scrollbar-thumb,
+.fixed-panel > .console-feed::-webkit-scrollbar-thumb {
+    background: var(--border);
+}
+
+/* Tables */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(34, 48, 60, 0.6);
+}
+
+.data-table th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+/* Simple feed panels, used by alerts and blacklist */
+.feed {
+    padding: 10px 16px 16px;
+}
+
+.feed-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(34, 48, 60, 0.45);
+    font-size: 13px;
+}
+
+.feed-item:last-child {
+    border-bottom: none;
+}
+
+.feed-time {
+    color: var(--muted);
+    min-width: 68px;
+}
+
+.feed-text {
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+/* Request summary cards */
+.stat-blocks {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 16px;
+}
+
+.stat-card {
+    padding: 14px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.stat-label {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    font-size: 24px;
+    color: var(--text);
+}
+
+/* Makes Request Summary fit without needing a scrollbar */
+.summary-panel .stat-blocks {
+    gap: 8px;
+    padding: 12px 16px;
+    overflow-y: hidden;
+}
+
+.summary-panel .stat-card {
+    padding: 10px 12px;
+}
+
+.summary-panel .stat-label {
+    margin-bottom: 4px;
+}
+
+.summary-panel .stat-value {
+    font-size: 22px;
+}
+
+/* Status rows used in sidebar and model panel */
+.status-list,
+.sidebar-footer {
+    padding: 12px 16px 16px;
+}
+
+.status-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(34, 48, 60, 0.45);
+}
+
+.status-line:last-child {
+    border-bottom: none;
+}
+
+.label {
+    color: var(--muted);
+}
+
+.value {
+    color: var(--text);
+}
+
+/* Small status tags */
+.badge {
+    padding: 3px 8px;
+    border: 1px solid currentColor;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+}
+
+.badge-green {
+    color: var(--green);
+}
+
+.badge-yellow {
+    color: var(--yellow);
+}
+
+.badge-red {
+    color: var(--red);
+}
+
+/* Live IDS console panel */
+.console-feed {
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.22);
+    font-size: 12px;
+}
+
+/* Simpler terminal-style row */
+.console-line {
+    display: block;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(34, 48, 60, 0.45);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.console-line:last-child {
+    border-bottom: none;
+}
+
+/* Small spacing between bits of log data */
+.console-time,
+.console-level,
+.console-ip,
+.console-score {
+    margin-right: 10px;
+    white-space: nowrap;
+}
+
+.console-time,
+.console-score {
+    color: var(--muted);
+}
+
+/* Log level styling */
+.console-level {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* Log level colours */
+.console-level.collect {
+    color: var(--accent);
+}
+
+.console-level.score {
+    color: var(--green);
+}
+
+.console-level.watch {
+    color: var(--yellow);
+}
+
+.console-level.alert {
+    color: var(--red);
+}
+
+.console-level.waiting {
+    color: var(--muted);
+}
+
+.console-level.system {
+    color: var(--accent);
+}
+
+.console-ip {
+    color: var(--text);
+}
+
+.console-message {
+    color: var(--text);
+}
+
+/* Scroll only inside the suspicious IP table */
+.table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Medium screens */
+@media (max-width: 1100px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Small screens */
+@media (max-width: 850px) {
+    .app-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .topbar {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* Hide less important console fields on small screens */
+    .console-ip,
+    .console-score {
+        display: none;
+    }
+}
