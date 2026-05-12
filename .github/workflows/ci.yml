@@ -69,9 +69,18 @@ jobs:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'table'
+          output: 'trivy-results.txt'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           exit-code: '1'
+
+      - name: Upload Trivy scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-report
+          path: trivy-results.txt
+          if-no-files-found: warn
 
       - name: Upload test reports
         if: always()
