@@ -1,6 +1,7 @@
 plugins {
     id 'org.springframework.boot' version '3.3.5' apply false
     id 'io.spring.dependency-management' version '1.1.6' apply false
+    id 'org.sonarqube' version '7.3.0.8198'
 }
 
 allprojects {
@@ -36,5 +37,16 @@ subprojects {
             xml.required = true
             html.required = true
         }
+    }
+}
+
+sonar {
+    properties {
+        property "sonar.projectKey", "JMorey-1_strix-ids"
+        property "sonar.organization", "jmorey-1"
+        property "sonar.host.url", "https://sonarcloud.io"
+
+        // Send JaCoCo XML coverage reports from all modules to SonarQube Cloud.
+        property "sonar.coverage.jacoco.xmlReportPaths", "**/build/reports/jacoco/test/jacocoTestReport.xml"
     }
 }
