@@ -14,10 +14,10 @@ Closes #
 
 ## Testing
 
-- [ ] Build runs locally
-- [ ] Relevant tests added or updated
-- [ ] Existing tests still pass
-- [ ] Manual checks completed where needed
+- [] Build runs locally
+- [] Relevant tests added or updated
+- [] Existing tests still pass
+- [] Manual checks completed where needed
 
 ## Review Notes
 

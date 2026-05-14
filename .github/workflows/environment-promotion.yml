@@ -1,0 +1,66 @@
+name: Environment Promotion Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: environment-promotion
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate promotion source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ensure promotion starts from main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "Environment promotion must be run from main."
+            exit 1
+          fi
+
+  dev:
+    name: Promote to dev
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: dev
+
+    steps:
+      - name: Record dev promotion
+        run: |
+          echo "Environment: ${{ vars.ENVIRONMENT_NAME }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Promotion stage: dev"
+
+  staging:
+    name: Promote to staging
+    runs-on: ubuntu-latest
+    needs: dev
+    environment:
+      name: staging
+
+    steps:
+      - name: Record staging promotion
+        run: |
+          echo "Environment: ${{ vars.ENVIRONMENT_NAME }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Promotion stage: staging"
+
+  production:
+    name: Promote to production
+    runs-on: ubuntu-latest
+    needs: staging
+    environment:
+      name: production
+
+    steps:
+      - name: Record production promotion
+        run: |
+          echo "Environment: ${{ vars.ENVIRONMENT_NAME }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Promotion stage: production"
