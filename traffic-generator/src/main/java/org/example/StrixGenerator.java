@@ -7,6 +7,7 @@ import org.example.profile.NormalUserProfile;
 import org.example.profile.TrafficProfile;
 
 import java.util.Random;
+import java.security.SecureRandom;
 
 /**
  * Starts the Strix traffic generator.
@@ -15,13 +16,20 @@ import java.util.Random;
  * and the scenario runner. The generator is used to create normal traffic first,
  * then suspicious traffic for the IDS to detect.
  */
-public class StrixGeneratorScratch {
+public class StrixGenerator {
 
-    private static final String BASE_URL = "http://localhost:8080";
-    private static final String IDS_BASE_URL = "http://localhost:8081";
+    private static final String BASE_URL = getEnvOrDefault(
+            "STRIX_TARGET_BASE_URL",
+            "http://localhost:8080"
+    );
+
+    private static final String IDS_BASE_URL = getEnvOrDefault(
+            "STRIX_IDS_BASE_URL",
+            "http://localhost:8081"
+    );
 
     public static void main(String[] args) throws Exception {
-        Random random = new Random();
+        Random random = new SecureRandom();
 
         TrafficClient trafficClient = new TrafficClient(BASE_URL, IDS_BASE_URL);
 
@@ -44,5 +52,10 @@ public class StrixGeneratorScratch {
         );
 
         scenarioRunner.runScenario();
+    }
+
+    private static String getEnvOrDefault(String name, String defaultValue) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 }
