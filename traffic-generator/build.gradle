@@ -3,5 +3,5 @@ plugins {
 }
 
 application {
-    mainClass = 'org.example.StrixGeneratorScratch'
+    mainClass = 'org.example.StrixGenerator'
 }

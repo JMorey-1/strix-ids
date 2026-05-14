@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.net.URI;
@@ -26,7 +27,8 @@ import java.net.http.HttpResponse;
 @Component
 public class RequestLoggingFilter implements Filter {
 
-    private static final String IDS_URL = "http://localhost:8081/events/request";
+    @Value("${strix.ids.url:http://localhost:8081/events/request}")
+    private String idsUrl = "http://localhost:8081/events/request";
 
     // Reused client for sending request events to the IDS.
     private final HttpClient httpClient = HttpClient.newHttpClient();
@@ -75,7 +77,7 @@ public class RequestLoggingFilter implements Filter {
         );
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(IDS_URL))
+                .uri(URI.create(idsUrl))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
