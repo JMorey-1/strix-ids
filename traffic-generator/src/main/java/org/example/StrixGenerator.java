@@ -7,6 +7,7 @@ import org.example.profile.NormalUserProfile;
 import org.example.profile.TrafficProfile;
 
 import java.util.Random;
+import java.security.SecureRandom;
 
 /**
  * Starts the Strix traffic generator.
@@ -28,7 +29,7 @@ public class StrixGenerator {
     );
 
     public static void main(String[] args) throws Exception {
-        Random random = new Random();
+        Random random = new SecureRandom();
 
         TrafficClient trafficClient = new TrafficClient(BASE_URL, IDS_BASE_URL);
 
