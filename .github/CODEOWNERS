@@ -1,0 +1,17 @@
+# Default repository ownership
+* @JMorey-1
+
+# DevOps, pipeline and release ownership
+.github/ @JMorey-1 @Niamh-Kav-1
+docker-compose.yml @JMorey-1 @Niamh-Kav-1
+.dockerignore @JMorey-1 @Niamh-Kav-1
+*/Dockerfile @JMorey-1 @Niamh-Kav-1
+
+# Application and backend ownership
+target-app/ @JMorey-1 @James-Smith-1
+strix-ids/ @JMorey-1 @James-Smith-1
+traffic-generator/ @JMorey-1 @James-Smith-1
+
+# Documentation
+docs/ @JMorey-1
+README.md @JMorey-1
