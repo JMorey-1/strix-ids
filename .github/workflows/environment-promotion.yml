@@ -38,15 +38,17 @@ jobs:
       - name: Build image references
         id: meta
         shell: bash
+        env:
+          PROMOTION_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          TAG="${{ inputs.image_tag }}"
+          TAG="$PROMOTION_IMAGE_TAG"
 
           if [[ ! "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]]; then
             echo "Invalid image tag: $TAG"
             exit 1
           fi
 
-          OWNER_LC=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          OWNER_LC=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
           REPO_LC=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')
           IMAGE_NAMESPACE="${REGISTRY}/${OWNER_LC}/${REPO_LC}"
 
@@ -80,10 +82,14 @@ jobs:
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Pull published images
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
         run: |
-          docker pull "${{ needs.prepare.outputs.target_app_image }}"
-          docker pull "${{ needs.prepare.outputs.strix_ids_image }}"
-          docker pull "${{ needs.prepare.outputs.traffic_generator_image }}"
+          docker pull "$TARGET_APP_IMAGE"
+          docker pull "$STRIX_IDS_IMAGE"
+          docker pull "$TRAFFIC_GENERATOR_IMAGE"
 
   # Dev promotion runs first and performs the smoke checks.
   dev:
@@ -103,6 +109,10 @@ jobs:
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Run dev smoke checks
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          IDS_EVENT_URL: http://strix-ids:8081/events/request
         run: |
           cleanup() {
             docker rm -f strix-ids strix-target-app || true
@@ -118,14 +128,14 @@ jobs:
             --network strix-smoke \
             -p 8081:8081 \
             -e SPRING_DATASOURCE_URL=jdbc:h2:mem:strix-smoke \
-            "${{ needs.prepare.outputs.strix_ids_image }}"
+            "$STRIX_IDS_IMAGE"
 
           docker run -d \
             --name strix-target-app \
             --network strix-smoke \
             -p 8080:8080 \
-            -e STRIX_IDS_URL=http://strix-ids:8081/events/request \
-            "${{ needs.prepare.outputs.target_app_image }}"
+            -e STRIX_IDS_URL="$IDS_EVENT_URL" \
+            "$TARGET_APP_IMAGE"
 
           wait_for_url() {
             url="$1"
@@ -154,12 +164,15 @@ jobs:
           wait_for_url "http://localhost:8081/api/status"
 
       - name: Record dev promotion
+        env:
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+          PROMOTION_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           {
             echo "## Dev promotion"
             echo ""
-            echo "Environment: ${{ vars.ENVIRONMENT_NAME }}"
-            echo "Image tag: ${{ inputs.image_tag }}"
+            echo "Environment: $ENVIRONMENT_NAME"
+            echo "Image tag: $PROMOTION_IMAGE_TAG"
             echo "Smoke checks: passed"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -181,18 +194,25 @@ jobs:
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Pull promoted image set
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
         run: |
-          docker pull "${{ needs.prepare.outputs.target_app_image }}"
-          docker pull "${{ needs.prepare.outputs.strix_ids_image }}"
-          docker pull "${{ needs.prepare.outputs.traffic_generator_image }}"
+          docker pull "$TARGET_APP_IMAGE"
+          docker pull "$STRIX_IDS_IMAGE"
+          docker pull "$TRAFFIC_GENERATOR_IMAGE"
 
       - name: Record staging promotion
+        env:
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+          PROMOTION_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           {
             echo "## Staging promotion"
             echo ""
-            echo "Environment: ${{ vars.ENVIRONMENT_NAME }}"
-            echo "Image tag: ${{ inputs.image_tag }}"
+            echo "Environment: $ENVIRONMENT_NAME"
+            echo "Image tag: $PROMOTION_IMAGE_TAG"
             echo "Status: approved and promoted"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -214,17 +234,24 @@ jobs:
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Pull promoted image set
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
         run: |
-          docker pull "${{ needs.prepare.outputs.target_app_image }}"
-          docker pull "${{ needs.prepare.outputs.strix_ids_image }}"
-          docker pull "${{ needs.prepare.outputs.traffic_generator_image }}"
+          docker pull "$TARGET_APP_IMAGE"
+          docker pull "$STRIX_IDS_IMAGE"
+          docker pull "$TRAFFIC_GENERATOR_IMAGE"
 
       - name: Record production promotion
+        env:
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+          PROMOTION_IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           {
             echo "## Production promotion"
             echo ""
-            echo "Environment: ${{ vars.ENVIRONMENT_NAME }}"
-            echo "Image tag: ${{ inputs.image_tag }}"
+            echo "Environment: $ENVIRONMENT_NAME"
+            echo "Image tag: $PROMOTION_IMAGE_TAG"
             echo "Status: approved and promoted"
           } >> "$GITHUB_STEP_SUMMARY"
