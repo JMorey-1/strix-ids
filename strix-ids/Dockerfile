@@ -11,7 +11,7 @@ COPY strix-ids strix-ids
 RUN chmod +x gradlew
 RUN ./gradlew :strix-ids:bootJar --no-daemon
 
-FROM eclipse-temurin:17-jre
+FROM cgr.dev/chainguard/jre:latest
 
 WORKDIR /app
 
