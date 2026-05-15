@@ -11,7 +11,7 @@ COPY target-app target-app
 RUN chmod +x gradlew
 RUN ./gradlew :target-app:bootJar --no-daemon
 
-FROM eclipse-temurin:17-jre
+FROM cgr.dev/chainguard/jre:latest
 
 WORKDIR /app
 
