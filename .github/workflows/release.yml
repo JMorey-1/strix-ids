@@ -175,6 +175,9 @@ jobs:
       - tag-release-images
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Create release notes
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
@@ -210,6 +213,7 @@ jobs:
           SOURCE_IMAGE_TAG: ${{ needs.prepare.outputs.source_image_tag }}
         run: |
           gh release create "$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$SOURCE_IMAGE_TAG" \
             --title "Strix $RELEASE_VERSION" \
             --notes-file release-notes.md
