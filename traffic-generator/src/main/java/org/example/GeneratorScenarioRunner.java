@@ -44,7 +44,7 @@ public class GeneratorScenarioRunner {
         this.random = random;
     }
 
-    public void runScenario() throws Exception {
+    public void runScenario() throws InterruptedException {
         runWarmupPhase();
         trainModel();
         runDetectionPhase();
@@ -60,6 +60,9 @@ public class GeneratorScenarioRunner {
              * This prevents previous rate limits or blocked IPs from affecting warm-up.
              */
             trafficClient.resetTargetMitigations();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
         } catch (Exception e) {
             System.out.println("[ERROR] Failed to reset target mitigation state: " + e.getMessage());
         }
@@ -67,6 +70,9 @@ public class GeneratorScenarioRunner {
         try {
             // Tell the IDS to clear old training data and begin collecting normal samples.
             trafficClient.signalIds("/model/collect");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
         } catch (Exception e) {
             System.out.println("[ERROR] Failed to signal IDS collect phase: " + e.getMessage());
         }
@@ -89,6 +95,9 @@ public class GeneratorScenarioRunner {
                 normalUserProfile.run(ipAddress);
                 Thread.sleep(randomDelay(2000, 5000));
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println("[ERROR] Warm-up user " + ipAddress + " interrupted");
         } catch (Exception e) {
             System.out.println("[ERROR] Warm-up user " + ipAddress + ": " + e.getMessage());
         }
@@ -100,6 +109,9 @@ public class GeneratorScenarioRunner {
         try {
             // Tell the IDS to train the model using the samples collected during warm-up.
             trafficClient.signalIds("/model/train");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
         } catch (Exception e) {
             System.out.println("[ERROR] Failed to signal IDS train phase: " + e.getMessage());
         }
@@ -160,6 +172,9 @@ public class GeneratorScenarioRunner {
             trafficClient.verificationGet("Normal user check", "/", "192.168.1.1");
 
             System.out.println("[GENERATOR] Mitigation verification complete");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
         } catch (Exception e) {
             System.out.println("[ERROR] Mitigation verification failed: " + e.getMessage());
         }
@@ -168,6 +183,9 @@ public class GeneratorScenarioRunner {
     private void runProfile(TrafficProfile profile, String ipAddress, String label) {
         try {
             profile.run(ipAddress);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println("[ERROR] " + label + " " + ipAddress + " interrupted");
         } catch (Exception e) {
             System.out.println("[ERROR] " + label + " " + ipAddress + ": " + e.getMessage());
         }
