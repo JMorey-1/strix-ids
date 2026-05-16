@@ -27,6 +27,12 @@ public class AuthController {
     private static final String ADMIN_USERNAME = "admin";
     private static final String ADMIN_PASSWORD = "admin123";
 
+    @GetMapping("/login")
+    public ResponseEntity<String> loginPage() {
+        // Represents loading the login page before submitting credentials.
+        return ResponseEntity.ok("Login page");
+    }
+
     @PostMapping("/login")
     public ResponseEntity<String> login(@RequestBody Map<String, String> credentials) {
         String username = credentials.get("username");

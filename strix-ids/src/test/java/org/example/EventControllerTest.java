@@ -8,8 +8,8 @@ import org.example.mitigation.MitigationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -29,42 +29,37 @@ class EventControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private FeatureExtractionService featureExtractionService;
 
-    @MockBean
+    @MockitoBean
     private AnomalyDetectionService anomalyDetectionService;
 
-    @MockBean
+    @MockitoBean
     private DetectionClassificationService detectionClassificationService;
 
-    @MockBean
+    @MockitoBean
     private IdsEventLogService idsEventLogService;
 
-    @MockBean
+    @MockitoBean
     private MitigationService mitigationService;
 
     @Test
     void receiveEvent_WhenModelIsCollecting_ShouldCollectFeaturesAndLogTrainingSample()
             throws Exception {
-        // Create feature vector
         double[] features = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-        // Set service state
         when(featureExtractionService.extractFeatures(eq("192.168.1.5"), any(RequestEvent.class)))
                 .thenReturn(features);
         when(anomalyDetectionService.isCollecting()).thenReturn(true);
 
-        // Test incoming request event
         mockMvc.perform(post("/events/request")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson("192.168.1.5", "GET", "/products", 200)))
                 .andExpect(status().isOk());
 
-        // Check features collected
         verify(anomalyDetectionService).collect(same(features));
 
-        // Check collect log entry
         verify(idsEventLogService).addEvent(
                 eq(IdsEventLevel.COLLECT),
                 eq("192.168.1.5"),
@@ -73,7 +68,6 @@ class EventControllerTest {
                 same(features)
         );
 
-        // Check detection path not used
         verify(anomalyDetectionService, never()).score(any());
         verifyNoInteractions(detectionClassificationService);
         verifyNoInteractions(mitigationService);
@@ -82,10 +76,8 @@ class EventControllerTest {
     @Test
     void receiveEvent_WhenModelIsTrained_ShouldScoreClassifyLogAndProcessMitigation()
             throws Exception {
-        // Create feature vector
         double[] features = {8.0, 0.8, 0.0, 0.4, 0.7, 0.0, 0.0, 0.8, 0.9};
 
-        // Create detection result
         DetectionResult result = new DetectionResult(
                 IdsEventLevel.WATCH,
                 0.58,
@@ -93,7 +85,6 @@ class EventControllerTest {
                 features
         );
 
-        // Set service state
         when(featureExtractionService.extractFeatures(eq("10.0.0.5"), any(RequestEvent.class)))
                 .thenReturn(features);
         when(anomalyDetectionService.isCollecting()).thenReturn(false);
@@ -101,17 +92,14 @@ class EventControllerTest {
         when(anomalyDetectionService.score(features)).thenReturn(0.58);
         when(detectionClassificationService.classify(0.58, features)).thenReturn(result);
 
-        // Test incoming request event
         mockMvc.perform(post("/events/request")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson("10.0.0.5", "POST", "/auth/login", 401)))
                 .andExpect(status().isOk());
 
-        // Check scoring and classification
         verify(anomalyDetectionService).score(same(features));
         verify(detectionClassificationService).classify(0.58, features);
 
-        // Check IDS event logged
         verify(idsEventLogService).addEvent(
                 eq(IdsEventLevel.WATCH),
                 eq("10.0.0.5"),
@@ -120,7 +108,6 @@ class EventControllerTest {
                 same(features)
         );
 
-        // Check mitigation updated
         verify(mitigationService).processDetectionEvent(
                 "10.0.0.5",
                 IdsEventLevel.WATCH,
@@ -131,22 +118,18 @@ class EventControllerTest {
     @Test
     void receiveEvent_WhenModelIsNotTrained_ShouldLogWaitingEvent()
             throws Exception {
-        // Create feature vector
         double[] features = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-        // Set service state
         when(featureExtractionService.extractFeatures(eq("192.168.1.10"), any(RequestEvent.class)))
                 .thenReturn(features);
         when(anomalyDetectionService.isCollecting()).thenReturn(false);
         when(anomalyDetectionService.isTrained()).thenReturn(false);
 
-        // Test incoming request event
         mockMvc.perform(post("/events/request")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson("192.168.1.10", "GET", "/health", 200)))
                 .andExpect(status().isOk());
 
-        // Check waiting log entry
         verify(idsEventLogService).addEvent(
                 eq(IdsEventLevel.WAITING),
                 eq("192.168.1.10"),
@@ -155,7 +138,6 @@ class EventControllerTest {
                 same(features)
         );
 
-        // Check model path not used
         verify(anomalyDetectionService, never()).collect(any());
         verify(anomalyDetectionService, never()).score(any());
         verifyNoInteractions(detectionClassificationService);
@@ -163,7 +145,6 @@ class EventControllerTest {
     }
 
     private String requestJson(String ip, String method, String uri, int statusCode) {
-        // Create request event JSON
         return """
                 {
                     "ip": "%s",

@@ -1,8 +1,10 @@
+/*
+ * Fetches JSON from one of the dashboard API endpoints.
+ * If the request fails, an error is thrown and handled by refreshDashboard().
+ */
 async function fetchJson(url) {
-    // Fetch JSON data from one backend endpoint.
     const response = await fetch(url);
 
-    // Stop the refresh if the endpoint returns an error.
     if (!response.ok) {
         throw new Error(`Request failed: ${url}`);
     }
@@ -10,8 +12,11 @@ async function fetchJson(url) {
     return response.json();
 }
 
+/*
+ * Updates the main status panel with the current IDS mode, engine state,
+ * uptime and the model details.
+ */
 function renderStatus(status) {
-    // Update the sidebar system status values.
     const systemMode = document.getElementById("system-mode");
 
     systemMode.textContent = status.mode;
@@ -20,15 +25,17 @@ function renderStatus(status) {
     document.getElementById("engine-status").textContent = status.engineStatus;
     document.getElementById("uptime").textContent = status.uptime;
 
-    // Update the model status panel if the elements exist.
     setTextIfPresent("model-algorithm", status.modelAlgorithm);
     setTextIfPresent("model-training-state", status.modelTrainingState);
     setTextIfPresent("model-window-size", status.modelWindowSize);
     setTextIfPresent("model-confidence", status.modelConfidence);
 }
 
+/*
+ * Safely updates optional dashboard fields.
+ * Some elements may not exist if the HTML layout changes later.
+ */
 function setTextIfPresent(id, value) {
-    // Small helper to avoid errors if a dashboard element is missing.
     const element = document.getElementById(id);
 
     if (element) {
@@ -36,8 +43,10 @@ function setTextIfPresent(id, value) {
     }
 }
 
+/*
+ * Chooses the badge colour for the current IDS operating mode.
+ */
 function getModeBadgeClass(mode) {
-    // Choose the badge colour used for the current IDS mode.
     if (!mode) {
         return "badge-yellow";
     }
@@ -55,8 +64,10 @@ function getModeBadgeClass(mode) {
     return "badge-red";
 }
 
+/*
+ * Chooses the badge colour for mitigation states shown in the suspicious IP table.
+ */
 function getBadgeClass(status) {
-    // Choose the badge colour used for mitigation statuses.
     if (!status) {
         return "badge badge-green";
     }
@@ -74,8 +85,10 @@ function getBadgeClass(status) {
     return "badge badge-green";
 }
 
+/*
+ * Converts a full date-time value into a short time value for feed panels.
+ */
 function formatTime(dateTime) {
-    // Convert a full date-time string into just HH:mm:ss.
     if (!dateTime) {
         return "-";
     }
@@ -83,8 +96,11 @@ function formatTime(dateTime) {
     return dateTime.substring(11, 19);
 }
 
+/*
+ * Displays the IP addresses currently being tracked by the mitigation service.
+ * This shows the current state, ie WATCH, SUSPICIOUS or BLOCKED.
+ */
 function renderSuspiciousIps(items) {
-    // Fill the suspicious IP table from mitigation records.
     const tbody = document.getElementById("suspicious-ips-body");
 
     if (!items.length) {
@@ -105,8 +121,11 @@ function renderSuspiciousIps(items) {
     `).join("");
 }
 
+/*
+ * Shows recent WATCH and ALERT events.
+ * These are the main detection events produced by the IDS.
+ */
 function renderAlerts(events) {
-    // Show only WATCH and ALERT events in the alert feed.
     const container = document.getElementById("alerts-feed");
 
     const alertEvents = events
@@ -130,29 +149,43 @@ function renderAlerts(events) {
     `).join("");
 }
 
-function renderBlacklist(items) {
-    // Fill the blacklist panel from blocked mitigation records.
-    const container = document.getElementById("blacklist-feed");
+/*
+ * Shows mitigation actions sent by the IDS to the target application.
+ * These are already part of the IDS event stream as SYSTEM messages so this
+ * panel does not need a separate backend endpoint.
+ */
+function renderMitigationActions(events) {
+    const container = document.getElementById("mitigation-actions-feed");
 
-    if (!items.length) {
+    if (!container) {
+        return;
+    }
+
+    const mitigationEvents = events
+        .filter(event => event.message && event.message.includes("[IDS][MITIGATION]"))
+        .slice(0, 8);
+
+    if (!mitigationEvents.length) {
         container.innerHTML = `
             <div class="feed-item">
-                <span class="feed-text">Blacklist is empty</span>
+                <span class="feed-text">No mitigation actions yet</span>
             </div>
         `;
         return;
     }
 
-    container.innerHTML = items.map(item => `
+    container.innerHTML = mitigationEvents.map(event => `
         <div class="feed-item">
-            <span class="feed-time">${formatTime(item.blockedAt)}</span>
-            <span class="feed-text">${item.ipAddress} blocked: ${item.reason}</span>
+            <span class="feed-time">${event.time}</span>
+            <span class="feed-text">${event.ipAddress || "SYSTEM"}: ${event.message}</span>
         </div>
     `).join("");
 }
 
+/*
+ * Converts the event level into a CSS class for the live IDS console.
+ */
 function getConsoleLevelClass(level) {
-    // Map IDS event levels to CSS classes.
     if (!level) {
         return "waiting";
     }
@@ -160,8 +193,10 @@ function getConsoleLevelClass(level) {
     return level.toLowerCase();
 }
 
+/*
+ * Formats anomaly scores so the console stays readable.
+ */
 function formatScore(score) {
-    // Keep anomaly scores readable in the console.
     if (score === null || score === undefined) {
         return "-";
     }
@@ -169,8 +204,12 @@ function formatScore(score) {
     return Number(score).toFixed(3);
 }
 
+/*
+ * Renders the live IDS console.
+ * This gives the dashboard a terminal-like view of recent scoring, alerts,
+ * mitigation messages, etc.
+ */
 function renderIdsEvents(events) {
-    // Render the live IDS console from recent IDS log entries.
     const container = document.getElementById("ids-console-feed");
 
     if (!container) {
@@ -186,7 +225,6 @@ function renderIdsEvents(events) {
         return;
     }
 
-    // Limit the visible console list so the panel stays readable.
     const visibleEvents = events.slice(0, 40);
 
     container.innerHTML = visibleEvents.map(event => `
@@ -200,8 +238,11 @@ function renderIdsEvents(events) {
     `).join("");
 }
 
+/*
+ * Updates the simple request summary counters.
+ * SCORE means normal scoring activity while WATCH and ALERT are flagged events.
+ */
 function renderRequestSummary(events) {
-    // Count normal, flagged and alert-level events for the summary cards.
     const normalCount = events.filter(event => event.level === "SCORE").length;
 
     const flaggedCount = events.filter(event =>
@@ -215,8 +256,11 @@ function renderRequestSummary(events) {
     document.getElementById("alert-event-count").textContent = alertCount;
 }
 
+/*
+ * Updates the large hero status area at the top of the dashboard.
+ * This makes the current system state obvious during my demos.
+ */
 function renderHeroState(status) {
-    // Update the main detection state panel based on the IDS mode.
     const heroStatus = document.getElementById("hero-status");
     const statusText = document.getElementById("hero-status-text");
     const description = document.getElementById("hero-description");
@@ -241,36 +285,43 @@ function renderHeroState(status) {
         return;
     }
 
-    // Default state before collection or training has happened.
     heroStatus.classList.add("waiting");
     statusText.textContent = "Waiting for model training";
     description.textContent = "Strix has started, but the anomaly model has not been trained yet. Run the warm-up and training phase before starting detection traffic.";
 }
 
+/*
+ * Main dashboard refresh function.
+ * It fetches the current status, suspicious IP records and recent IDS events
+ * in parallel then updates each of my panels.
+ */
 async function refreshDashboard() {
     try {
-        // Load all dashboard data together so the UI refreshes as one snapshot.
-        const [status, suspiciousIps, blacklist, idsEvents] = await Promise.all([
+        /*
+         * Mitigation actions are now pulled from the IDS event stream, so the old
+         * /api/blacklist request is no longer needed for this dashboard view.
+         */
+        const [status, suspiciousIps, idsEvents] = await Promise.all([
             fetchJson("/api/status"),
             fetchJson("/api/suspicious-ips"),
-            fetchJson("/api/blacklist"),
             fetchJson("/api/ids-events")
         ]);
 
-        // Update each dashboard section with the latest backend data.
         renderStatus(status);
         renderHeroState(status);
         renderAlerts(idsEvents);
         renderSuspiciousIps(suspiciousIps);
-        renderBlacklist(blacklist);
+        renderMitigationActions(idsEvents);
         renderIdsEvents(idsEvents);
         renderRequestSummary(idsEvents);
     } catch (error) {
-        // Keep the dashboard running even if one refresh fails.
         console.error("Dashboard refresh failed:", error);
     }
 }
 
-// Load the dashboard once, then refresh it every second.
+/*
+ * Load the dashboard immediately and then refresh it once per second so the UI
+ * stays live while the traffic generator is running.
+ */
 refreshDashboard();
 setInterval(refreshDashboard, 1000);

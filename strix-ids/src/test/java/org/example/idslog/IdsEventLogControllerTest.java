@@ -3,7 +3,7 @@ package org.example.idslog;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -19,21 +19,18 @@ class IdsEventLogControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private IdsEventLogService idsEventLogService;
 
     @Test
     void getRecentEvents_ShouldReturnEmptyEventList() throws Exception {
-        // Set empty log
         when(idsEventLogService.getRecentEvents()).thenReturn(List.of());
 
-        // Test endpoint
         mockMvc.perform(get("/api/ids-events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$").isEmpty());
 
-        // Check service called
         verify(idsEventLogService).getRecentEvents();
     }
 }

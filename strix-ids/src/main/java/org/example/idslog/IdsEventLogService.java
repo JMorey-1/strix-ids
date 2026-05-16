@@ -1,5 +1,6 @@
 package org.example.idslog;
 
+import org.example.audit.AuditLogService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -17,9 +18,15 @@ public class IdsEventLogService {
 
     private static final int MAX_EVENTS = 100;
 
+    private final AuditLogService auditLogService;
+
     // Synchronized because events can be added while the dashboard is reading them.
     private final List<IdsEventLogEntry> events =
             Collections.synchronizedList(new ArrayList<>());
+
+    public IdsEventLogService(AuditLogService auditLogService) {
+        this.auditLogService = auditLogService;
+    }
 
     public void addEvent(IdsEventLevel level, String ipAddress, Double score,
                          String message, double[] features) {
@@ -40,6 +47,13 @@ public class IdsEventLogService {
                 events.remove(events.size() - 1);
             }
         }
+
+        /*
+         * Save important IDS events to lightweight text logs as well as showing
+         * them in the dashboard. This gives me persistent evidence for testing
+         * without moving the event log into the database.
+         */
+        auditLogService.logIdsEvent(level, ipAddress, score, message);
 
         // Still print to the terminal as this is useful while developing.
         System.out.println(entry.toConsoleString());
