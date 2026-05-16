@@ -1,0 +1,4 @@
+2026-05-16 18:57:00 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action 03806f37-7ee2-454a-98d5-20a1756bc774
+2026-05-16 19:04:12 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action 651b703e-ba6b-483f-85ce-72507fa43e7e
+2026-05-16 19:05:02 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action 09c6908b-fed9-4d9e-a8e4-3e3a975028b7
+2026-05-16 19:06:04 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action a38df285-ef5d-4d18-a2fc-e30750e1f91f

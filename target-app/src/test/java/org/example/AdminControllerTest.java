@@ -1,9 +1,11 @@
 package org.example;
 
+import org.example.mitigation.TargetMitigationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -15,12 +17,14 @@ class AdminControllerTest {
 
     private static final String ADMIN_TOKEN = "Bearer admin-token";
 
+    @MockitoBean
+    private TargetMitigationService targetMitigationService;
+
     @Autowired
     private MockMvc mockMvc;
 
     @Test
     void adminHome_WithValidToken_ShouldReturnAdminHome() throws Exception {
-        // Test admin home
         mockMvc.perform(get("/admin")
                         .header("Authorization", ADMIN_TOKEN))
                 .andExpect(status().isOk())
@@ -29,7 +33,6 @@ class AdminControllerTest {
 
     @Test
     void users_WithValidToken_ShouldReturnUserList() throws Exception {
-        // Test users endpoint
         mockMvc.perform(get("/admin/users")
                         .header("Authorization", ADMIN_TOKEN))
                 .andExpect(status().isOk())
@@ -38,7 +41,6 @@ class AdminControllerTest {
 
     @Test
     void settings_WithValidToken_ShouldReturnSettings() throws Exception {
-        // Test settings endpoint
         mockMvc.perform(get("/admin/settings")
                         .header("Authorization", ADMIN_TOKEN))
                 .andExpect(status().isOk())
@@ -47,7 +49,6 @@ class AdminControllerTest {
 
     @Test
     void reports_WithValidToken_ShouldReturnReports() throws Exception {
-        // Test reports endpoint
         mockMvc.perform(get("/admin/reports")
                         .header("Authorization", ADMIN_TOKEN))
                 .andExpect(status().isOk())
@@ -56,7 +57,6 @@ class AdminControllerTest {
 
     @Test
     void audit_WithValidToken_ShouldReturnAuditLog() throws Exception {
-        // Test audit endpoint
         mockMvc.perform(get("/admin/audit")
                         .header("Authorization", ADMIN_TOKEN))
                 .andExpect(status().isOk())
@@ -65,7 +65,6 @@ class AdminControllerTest {
 
     @Test
     void updateSettings_WithValidToken_ShouldReturnUpdatedMessage() throws Exception {
-        // Test update settings
         mockMvc.perform(post("/admin/settings")
                         .header("Authorization", ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -76,7 +75,6 @@ class AdminControllerTest {
 
     @Test
     void generateReport_WithValidToken_ShouldReturnReportStartedMessage() throws Exception {
-        // Test generate report
         mockMvc.perform(post("/admin/reports")
                         .header("Authorization", ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -87,7 +85,6 @@ class AdminControllerTest {
 
     @Test
     void auditAction_WithValidToken_ShouldReturnAuditActionMessage() throws Exception {
-        // Test audit action
         mockMvc.perform(post("/admin/audit")
                         .header("Authorization", ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -98,7 +95,6 @@ class AdminControllerTest {
 
     @Test
     void adminHome_WithoutToken_ShouldReturnUnauthorized() throws Exception {
-        // Test missing token
         mockMvc.perform(get("/admin"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().string("Unauthorized"));
@@ -106,7 +102,6 @@ class AdminControllerTest {
 
     @Test
     void adminHome_WithWrongToken_ShouldReturnForbidden() throws Exception {
-        // Test wrong token
         mockMvc.perform(get("/admin")
                         .header("Authorization", "Bearer wrong-token"))
                 .andExpect(status().isForbidden())
@@ -115,7 +110,6 @@ class AdminControllerTest {
 
     @Test
     void adminHome_WithBlankToken_ShouldReturnUnauthorized() throws Exception {
-        // Test blank token
         mockMvc.perform(get("/admin")
                         .header("Authorization", " "))
                 .andExpect(status().isUnauthorized())

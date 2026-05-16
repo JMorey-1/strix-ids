@@ -23,10 +23,24 @@ public class AdminController {
         return authorize(auth, "Admin home");
     }
 
+    @PostMapping
+    public ResponseEntity<String> adminHomePost(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody(required = false) String body) {
+        return authorize(auth, "Admin home action received");
+    }
+
     @GetMapping("/users")
     public ResponseEntity<String> users(
             @RequestHeader(value = "Authorization", required = false) String auth) {
         return authorize(auth, "Admin user list");
+    }
+
+    @PostMapping("/users")
+    public ResponseEntity<String> usersPost(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody(required = false) String body) {
+        return authorize(auth, "Admin user action received");
     }
 
     @GetMapping("/settings")

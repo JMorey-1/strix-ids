@@ -43,14 +43,27 @@ public class PublicController {
         return ResponseEntity.ok(List.of("Article 1", "Article 2", "Article 3"));
     }
 
+    @GetMapping("/contact")
+    public ResponseEntity<String> contactPage() {
+        // Represents loading the contact form page.
+        return ResponseEntity.ok("Contact page");
+    }
+
     @PostMapping("/contact")
     public ResponseEntity<String> contact(@RequestBody Map<String, String> body) {
-        // A normal POST request that is not related to login attempts.
+        // Represents submitting the contact form.
         return ResponseEntity.ok("Message received");
+    }
+
+    @GetMapping("/register")
+    public ResponseEntity<String> registerPage() {
+        // Represents loading the registration form page.
+        return ResponseEntity.ok("Register page");
     }
 
     @PostMapping("/register")
     public ResponseEntity<String> register(@RequestBody Map<String, String> body) {
+        // Represents submitting a registration request.
         return ResponseEntity.ok("Registered");
     }
 
@@ -58,5 +71,12 @@ public class PublicController {
     public ResponseEntity<Map<String, Object>> data() {
         // Small API-style endpoint used as part of normal application traffic.
         return ResponseEntity.ok(Map.of("status", "ok", "count", 42));
+    }
+
+    @PostMapping("/api/data")
+    public ResponseEntity<Map<String, Object>> submitData(
+            @RequestBody(required = false) Map<String, Object> body) {
+        // Represents a simple API write-style request.
+        return ResponseEntity.ok(Map.of("status", "received"));
     }
 }

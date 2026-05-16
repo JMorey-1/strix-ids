@@ -1,5 +1,6 @@
 package org.example.idslog;
 
+import org.example.audit.AuditLogService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -8,10 +9,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class IdsEventLogServiceTest {
 
+    private IdsEventLogService createService() {
+        return new IdsEventLogService(new NoOpAuditLogService());
+    }
+
     @Test
     void addEvent_ShouldStoreEvent() {
         // Create service
-        IdsEventLogService service = new IdsEventLogService();
+        IdsEventLogService service = createService();
 
         // Add event
         service.addEvent(
@@ -35,7 +40,7 @@ class IdsEventLogServiceTest {
     @Test
     void addEvent_ShouldStoreNewestEventFirst() {
         // Create service
-        IdsEventLogService service = new IdsEventLogService();
+        IdsEventLogService service = createService();
 
         // Add older event
         service.addEvent(
@@ -68,7 +73,7 @@ class IdsEventLogServiceTest {
     @Test
     void addEvent_WhenMoreThanMaxEvents_ShouldKeepOnlyMostRecentOneHundred() {
         // Create service
-        IdsEventLogService service = new IdsEventLogService();
+        IdsEventLogService service = createService();
 
         // Add more than max events
         for (int i = 1; i <= 105; i++) {
@@ -96,7 +101,7 @@ class IdsEventLogServiceTest {
     @Test
     void getRecentEvents_ShouldReturnCopyOfEventList() {
         // Create service
-        IdsEventLogService service = new IdsEventLogService();
+        IdsEventLogService service = createService();
 
         // Add event
         service.addEvent(
@@ -119,7 +124,7 @@ class IdsEventLogServiceTest {
     @Test
     void clearEvents_ShouldRemoveAllEvents() {
         // Create service
-        IdsEventLogService service = new IdsEventLogService();
+        IdsEventLogService service = createService();
 
         // Add event
         service.addEvent(
@@ -135,5 +140,24 @@ class IdsEventLogServiceTest {
 
         // Check empty log
         assertTrue(service.getRecentEvents().isEmpty());
+    }
+
+    private static class NoOpAuditLogService extends AuditLogService {
+
+        @Override
+        public void logIdsEvent(IdsEventLevel level,
+                                String ipAddress,
+                                Double score,
+                                String message) {
+            // No file logging is needed for these unit tests.
+        }
+
+        @Override
+        public void logMitigationAction(String ipAddress,
+                                        String actionType,
+                                        String reason,
+                                        String result) {
+            // No file logging is needed for these unit tests.
+        }
     }
 }

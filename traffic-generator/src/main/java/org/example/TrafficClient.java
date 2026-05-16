@@ -91,6 +91,39 @@ public class TrafficClient {
         System.out.println("[GENERATOR] Signalled IDS: " + path);
     }
 
+    public void resetTargetMitigations() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/internal/mitigation/reset"))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        /*
+         * Clears old target app mitigation state before a new demo run.
+         * This prevents previous rate limits or blacklist entries from affecting
+         * the next warm-up and detection cycle.
+         */
+        client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println("[GENERATOR] Reset target mitigation state");
+    }
+
+    public int verificationGet(String label, String path, String ipAddress)
+            throws IOException, InterruptedException {
+        /*
+         * Used at the end of the scenario to prove that mitigation is being enforced.
+         * For example, an attacker IP should receive 429 or 403, while a normal IP
+         * should still receive a normal successful response.
+         */
+        int statusCode = get(path, ipAddress);
+
+        System.out.println("[GENERATOR][VERIFY] " + label
+                + " ip=" + ipAddress
+                + " path=" + path
+                + " status=" + statusCode);
+
+        return statusCode;
+    }
+
     private void logRequest(String method, String ipAddress, String path, int statusCode) {
         System.out.println("[" + method + "] " + ipAddress + " " + path + " -> " + statusCode);
     }

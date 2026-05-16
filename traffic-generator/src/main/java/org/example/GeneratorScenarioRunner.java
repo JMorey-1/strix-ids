@@ -48,10 +48,21 @@ public class GeneratorScenarioRunner {
         runWarmupPhase();
         trainModel();
         runDetectionPhase();
+        runMitigationVerification();
     }
 
     private void runWarmupPhase() throws InterruptedException {
         System.out.println("[GENERATOR] Starting warm-up phase...");
+
+        try {
+            /*
+             * Clear any old target app mitigation state before a new scenario run.
+             * This prevents previous rate limits or blocked IPs from affecting warm-up.
+             */
+            trafficClient.resetTargetMitigations();
+        } catch (Exception e) {
+            System.out.println("[ERROR] Failed to reset target mitigation state: " + e.getMessage());
+        }
 
         try {
             // Tell the IDS to clear old training data and begin collecting normal samples.
@@ -128,6 +139,30 @@ public class GeneratorScenarioRunner {
 
         shutdownAndAwait(detectionExecutor, "detection");
         System.out.println("[GENERATOR] Detection phase complete");
+    }
+
+    private void runMitigationVerification() throws InterruptedException {
+        System.out.println("[GENERATOR] Starting mitigation verification...");
+
+        try {
+            /*
+             * These requests give a simple final proof that the target app is enforcing
+             * IDS mitigation actions. Attacker IPs should eventually receive 429 or 403,
+             * while a normal IP should still receive a normal successful response.
+             */
+            for (int i = 1; i <= 8; i++) {
+                trafficClient.verificationGet("Brute-force attacker check", "/", "10.0.0.1");
+                Thread.sleep(300);
+            }
+
+            trafficClient.verificationGet("Endpoint scanner check", "/admin/users", "172.16.0.1");
+            trafficClient.verificationGet("Admin prober check", "/admin/users", "203.0.113.1");
+            trafficClient.verificationGet("Normal user check", "/", "192.168.1.1");
+
+            System.out.println("[GENERATOR] Mitigation verification complete");
+        } catch (Exception e) {
+            System.out.println("[ERROR] Mitigation verification failed: " + e.getMessage());
+        }
     }
 
     private void runProfile(TrafficProfile profile, String ipAddress, String label) {

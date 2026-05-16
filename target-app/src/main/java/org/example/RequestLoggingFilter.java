@@ -9,8 +9,8 @@ import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,10 +25,11 @@ import java.net.http.HttpResponse;
  * and response status code and then sends on that information to the IDS as a request event.
  */
 @Component
+@Order(1)
+@SuppressWarnings("java:S106")
 public class RequestLoggingFilter implements Filter {
 
-    @Value("${strix.ids.url:http://localhost:8081/events/request}")
-    private String idsUrl = "http://localhost:8081/events/request";
+    private static final String IDS_URL = "http://localhost:8081/events/request";
 
     // Reused client for sending request events to the IDS.
     private final HttpClient httpClient = HttpClient.newHttpClient();
@@ -42,17 +43,24 @@ public class RequestLoggingFilter implements Filter {
          * The traffic generator sends X-Forwarded-For so I can simulate different IPs
          * while all requests are still coming from my own machine.
          */
-        String ip = req.getHeader("X-Forwarded-For");
-        if (ip == null) {
-            ip = req.getRemoteAddr();
-        }
+        String ip = extractClientIp(req);
 
         String method = req.getMethod();
         String uri = req.getRequestURI();
 
+        if (uri.startsWith("/internal/mitigation")) {
+            /*
+             * Internal mitigation callbacks come from Strix itself and should not be sent
+             * back to the IDS as normal application traffic. Otherwise, the system creates
+             * a feedback loop where mitigation actions become new detection events.
+             */
+            chain.doFilter(request, response);
+            return;
+        }
+
         /*
          * The wrapper lets me read the final response status after the controller runs.
-         * Without this, I would only know the request details not whether it returned
+         * Without this, I would only know the request details, not whether it returned
          * 404, etc
          */
         StatusCapturingResponseWrapper responseWrapper =
@@ -67,6 +75,16 @@ public class RequestLoggingFilter implements Filter {
         forwardToIds(ip, method, uri, statusCode);
     }
 
+    private String extractClientIp(HttpServletRequest request) {
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+
+        if (forwardedFor != null && !forwardedFor.isBlank()) {
+            return forwardedFor.split(",")[0].trim();
+        }
+
+        return request.getRemoteAddr();
+    }
+
     private void forwardToIds(String ip, String method, String uri, int statusCode) {
         /*
          * Builds the JSON body manually.
@@ -77,7 +95,7 @@ public class RequestLoggingFilter implements Filter {
         );
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(idsUrl))
+                .uri(URI.create(IDS_URL))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
@@ -94,10 +112,12 @@ public class RequestLoggingFilter implements Filter {
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
+        // No setup is required because the filter has no external resources to initialise.
     }
 
     @Override
     public void destroy() {
+        // No cleanup is required because the shared HttpClient does not need to be closed.
     }
 
     /**

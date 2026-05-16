@@ -1,9 +1,11 @@
 package org.example;
 
+import org.example.mitigation.TargetMitigationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -14,12 +16,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(PublicController.class)
 class PublicControllerTest {
 
+    @MockitoBean
+    private TargetMitigationService targetMitigationService;
+
     @Autowired
     private MockMvc mockMvc;
 
     @Test
     void home_ShouldReturnWelcomeMessage() throws Exception {
-        // Test home page
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Welcome"));
@@ -27,7 +31,6 @@ class PublicControllerTest {
 
     @Test
     void health_ShouldReturnUpStatus() throws Exception {
-        // Test health endpoint
         mockMvc.perform(get("/health"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("UP"));
@@ -35,7 +38,6 @@ class PublicControllerTest {
 
     @Test
     void products_ShouldReturnProductList() throws Exception {
-        // Test product list
         mockMvc.perform(get("/products"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(3)))
@@ -46,7 +48,6 @@ class PublicControllerTest {
 
     @Test
     void product_ShouldReturnProductWithGivenId() throws Exception {
-        // Test single product
         mockMvc.perform(get("/products/1"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Product 1"));
@@ -54,7 +55,6 @@ class PublicControllerTest {
 
     @Test
     void articles_ShouldReturnArticleList() throws Exception {
-        // Test article list
         mockMvc.perform(get("/articles"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(3)))
@@ -65,7 +65,6 @@ class PublicControllerTest {
 
     @Test
     void contact_ShouldReturnMessageReceived() throws Exception {
-        // Test contact form
         String requestBody = """
                 {
                     "name": "Jamie",
@@ -82,7 +81,6 @@ class PublicControllerTest {
 
     @Test
     void register_ShouldReturnRegisteredMessage() throws Exception {
-        // Test registration
         String requestBody = """
                 {
                     "username": "jamie",
@@ -99,7 +97,6 @@ class PublicControllerTest {
 
     @Test
     void data_ShouldReturnApiData() throws Exception {
-        // Test API data
         mockMvc.perform(get("/api/data"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"))

@@ -5,7 +5,7 @@ import org.example.dashboard.service.DashboardStateService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.verify;
@@ -19,12 +19,11 @@ class DashboardApiControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private DashboardStateService dashboardStateService;
 
     @Test
     void getStatus_ShouldReturnDashboardStatus() throws Exception {
-        // Create dashboard status
         DashboardStatus status = new DashboardStatus(
                 "Detection",
                 "Running",
@@ -40,7 +39,6 @@ class DashboardApiControllerTest {
 
         when(dashboardStateService.getStatus()).thenReturn(status);
 
-        // Test status endpoint
         mockMvc.perform(get("/api/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mode").value("Detection"))
@@ -54,7 +52,6 @@ class DashboardApiControllerTest {
                 .andExpect(jsonPath("$.modelWindowSize").value("30 seconds"))
                 .andExpect(jsonPath("$.modelConfidence").value("Stable"));
 
-        // Check service called
         verify(dashboardStateService).getStatus();
     }
 }

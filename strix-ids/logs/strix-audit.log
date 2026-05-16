@@ -1,0 +1,12 @@
+2026-05-16 18:56:59 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event 3038fc0d-abf8-4637-9155-456a64a487c2
+2026-05-16 18:57:00 | SCORE | ip=192.168.1.10 | score=0.15 | message=Test score event cc12b3f0-a50e-4bc6-9987-e467c6297306
+2026-05-16 18:57:00 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action 03806f37-7ee2-454a-98d5-20a1756bc774
+2026-05-16 19:04:12 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event 33109645-f6b6-43e6-b46a-dbe6fee9ff54
+2026-05-16 19:04:12 | SCORE | ip=192.168.1.10 | score=0.15 | message=Test score event 4ce5b3ee-69e5-4c7f-a945-4ecbdecf8020
+2026-05-16 19:04:12 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action 651b703e-ba6b-483f-85ce-72507fa43e7e
+2026-05-16 19:05:02 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event d8b8a8fe-22d1-4196-af4b-152017696fc8
+2026-05-16 19:05:02 | SCORE | ip=192.168.1.10 | score=0.15 | message=Test score event d709126e-c64e-48ec-92b7-645f198377e1
+2026-05-16 19:05:02 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action 09c6908b-fed9-4d9e-a8e4-3e3a975028b7
+2026-05-16 19:06:04 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event 46c5faad-217c-4313-bbef-726929f4856f
+2026-05-16 19:06:04 | SCORE | ip=192.168.1.10 | score=0.15 | message=Test score event 534a0595-93cc-4c99-8df8-4b2230d7ffa2
+2026-05-16 19:06:04 | MITIGATION | ip=172.16.0.1 | action=BLACKLIST | result=sent to target app | reason=Test mitigation action a38df285-ef5d-4d18-a2fc-e30750e1f91f

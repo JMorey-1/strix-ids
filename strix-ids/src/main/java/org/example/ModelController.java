@@ -1,5 +1,6 @@
 package org.example;
 
+import org.example.mitigation.MitigationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,15 +18,24 @@ import java.util.Map;
 public class ModelController {
 
     private final AnomalyDetectionService anomalyDetectionService;
+    private final MitigationService mitigationService;
 
-    public ModelController(AnomalyDetectionService anomalyDetectionService) {
+    public ModelController(AnomalyDetectionService anomalyDetectionService,
+                           MitigationService mitigationService) {
         this.anomalyDetectionService = anomalyDetectionService;
+        this.mitigationService = mitigationService;
     }
 
     @GetMapping("/collect")
     public ResponseEntity<String> startCollecting() {
-        // Clears any previous training data and starts collecting normal traffic samples.
+        // Clears any previous training data and begins collecting normal traffic samples.
         anomalyDetectionService.startCollecting();
+
+        /*
+         * A new collection run is treated as a clean demo/test cycle, so old
+         * mitigation records should not affect the next detection phase.
+         */
+        mitigationService.resetMitigationState();
 
         return ResponseEntity.ok("Collecting training data");
     }

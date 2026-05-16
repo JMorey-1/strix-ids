@@ -1,0 +1,4 @@
+2026-05-16 18:56:59 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event 3038fc0d-abf8-4637-9155-456a64a487c2
+2026-05-16 19:04:12 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event 33109645-f6b6-43e6-b46a-dbe6fee9ff54
+2026-05-16 19:05:02 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event d8b8a8fe-22d1-4196-af4b-152017696fc8
+2026-05-16 19:06:04 | ALERT | ip=10.0.0.5 | score=0.72 | message=Test alert event 46c5faad-217c-4313-bbef-726929f4856f
