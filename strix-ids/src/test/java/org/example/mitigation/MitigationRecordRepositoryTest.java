@@ -24,8 +24,8 @@ class MitigationRecordRepositoryTest {
     @Test
     void findByIpAddress_ShouldReturnMatchingRecord() {
         // Save record
-        MitigationRecord record = new MitigationRecord("10.0.0.5");
-        mitigationRecordRepository.save(record);
+        MitigationRecord mitigationRecord = new MitigationRecord("10.0.0.5");
+        mitigationRecordRepository.save(mitigationRecord);
 
         // Find by IP
         Optional<MitigationRecord> result =

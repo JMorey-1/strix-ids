@@ -30,40 +30,40 @@ public class MitigationService {
         }
 
         // Reuse the existing record for this IP, or create one if it is new.
-        MitigationRecord record = mitigationRecordRepository.findByIpAddress(ipAddress)
+        MitigationRecord mitigationRecord = mitigationRecordRepository.findByIpAddress(ipAddress)
                 .orElseGet(() -> new MitigationRecord(ipAddress));
 
-        MitigationStatus previousStatus = record.getStatus();
+        MitigationStatus previousStatus = mitigationRecord.getStatus();
 
         if (level == IdsEventLevel.WATCH) {
-            record.registerWatch(reason);
+            mitigationRecord.registerWatch(reason);
         }
 
         if (level == IdsEventLevel.ALERT) {
-            record.registerAlert(reason);
+            mitigationRecord.registerAlert(reason);
         }
 
         // Save the updated score, status and reason back to H2.
-        mitigationRecordRepository.save(record);
+        mitigationRecordRepository.save(mitigationRecord);
 
-        sendMitigationActionIfStatusChanged(record, previousStatus);
+        sendMitigationActionIfStatusChanged(mitigationRecord, previousStatus);
     }
 
-    private void sendMitigationActionIfStatusChanged(MitigationRecord record,
+    private void sendMitigationActionIfStatusChanged(MitigationRecord mitigationRecord,
                                                      MitigationStatus previousStatus) {
-        MitigationStatus currentStatus = record.getStatus();
+        MitigationStatus currentStatus = mitigationRecord.getStatus();
 
         if (previousStatus == currentStatus) {
             return;
         }
 
         if (currentStatus == MitigationStatus.SUSPICIOUS) {
-            mitigationActionClient.sendRateLimitAction(record);
+            mitigationActionClient.sendRateLimitAction(mitigationRecord);
             return;
         }
 
         if (currentStatus == MitigationStatus.BLOCKED) {
-            mitigationActionClient.sendBlacklistAction(record);
+            mitigationActionClient.sendBlacklistAction(mitigationRecord);
         }
     }
 

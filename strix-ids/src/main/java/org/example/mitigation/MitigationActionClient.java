@@ -37,19 +37,19 @@ public class MitigationActionClient {
         this.targetMitigationUrl = targetMitigationUrl;
     }
 
-    public void sendRateLimitAction(MitigationRecord record) {
-        sendAction(record, MitigationActionType.RATE_LIMIT, 300);
+    public void sendRateLimitAction(MitigationRecord mitigationRecord) {
+        sendAction(mitigationRecord, MitigationActionType.RATE_LIMIT, 300);
     }
 
-    public void sendBlacklistAction(MitigationRecord record) {
-        sendAction(record, MitigationActionType.BLACKLIST, 600);
+    public void sendBlacklistAction(MitigationRecord mitigationRecord) {
+        sendAction(mitigationRecord, MitigationActionType.BLACKLIST, 600);
     }
 
-    private void sendAction(MitigationRecord record, MitigationActionType actionType, long expiresInSeconds) {
+    private void sendAction(MitigationRecord mitigationRecord, MitigationActionType actionType, long expiresInSeconds) {
         MitigationActionRequest request = new MitigationActionRequest(
-                record.getIpAddress(),
+                mitigationRecord.getIpAddress(),
                 actionType,
-                record.getReason(),
+                mitigationRecord.getReason(),
                 Instant.now().toEpochMilli(),
                 expiresInSeconds
         );
@@ -63,16 +63,16 @@ public class MitigationActionClient {
 
             idsEventLogService.addEvent(
                     IdsEventLevel.SYSTEM,
-                    record.getIpAddress(),
+                    mitigationRecord.getIpAddress(),
                     null,
                     message,
                     null
             );
 
             auditLogService.logMitigationAction(
-                    record.getIpAddress(),
+                    mitigationRecord.getIpAddress(),
                     actionType.name(),
-                    record.getReason(),
+                    mitigationRecord.getReason(),
                     "failed to build request"
             );
 
@@ -86,23 +86,23 @@ public class MitigationActionClient {
                 .build();
 
         httpClient.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofString())
-                .thenAccept(response -> handleResponse(record, actionType, response))
+                .thenAccept(response -> handleResponse(mitigationRecord, actionType, response))
                 .exceptionally(error -> {
                     String message = "Failed to send " + actionType
                             + " action to target app: " + error.getMessage();
 
                     idsEventLogService.addEvent(
                             IdsEventLevel.SYSTEM,
-                            record.getIpAddress(),
+                            mitigationRecord.getIpAddress(),
                             null,
                             message,
                             null
                     );
 
                     auditLogService.logMitigationAction(
-                            record.getIpAddress(),
+                            mitigationRecord.getIpAddress(),
                             actionType.name(),
-                            record.getReason(),
+                            mitigationRecord.getReason(),
                             "failed to send"
                     );
 
@@ -110,22 +110,22 @@ public class MitigationActionClient {
                 });
     }
 
-    private void handleResponse(MitigationRecord record,
+    private void handleResponse(MitigationRecord mitigationRecord,
                                 MitigationActionType actionType,
                                 HttpResponse<String> response) {
         if (response.statusCode() >= 200 && response.statusCode() < 300) {
             idsEventLogService.addEvent(
                     IdsEventLevel.SYSTEM,
-                    record.getIpAddress(),
+                    mitigationRecord.getIpAddress(),
                     null,
                     "[IDS][MITIGATION] action=" + actionType + " sent to target app",
                     null
             );
 
             auditLogService.logMitigationAction(
-                    record.getIpAddress(),
+                    mitigationRecord.getIpAddress(),
                     actionType.name(),
-                    record.getReason(),
+                    mitigationRecord.getReason(),
                     "sent to target app"
             );
 
@@ -134,16 +134,16 @@ public class MitigationActionClient {
 
         idsEventLogService.addEvent(
                 IdsEventLevel.SYSTEM,
-                record.getIpAddress(),
+                mitigationRecord.getIpAddress(),
                 null,
                 "Target app rejected " + actionType + " action with status " + response.statusCode(),
                 null
         );
 
         auditLogService.logMitigationAction(
-                record.getIpAddress(),
+                mitigationRecord.getIpAddress(),
                 actionType.name(),
-                record.getReason(),
+                mitigationRecord.getReason(),
                 "rejected with status " + response.statusCode()
         );
     }

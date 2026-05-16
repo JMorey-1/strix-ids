@@ -25,10 +25,10 @@ class MitigationControllerTest {
 
     @Test
     void getSuspiciousIps_ShouldReturnSuspiciousRecords() throws Exception {
-        MitigationRecord record = new MitigationRecord("10.0.0.5");
+        MitigationRecord mitigationRecord = new MitigationRecord("10.0.0.5");
 
         when(mitigationService.getSuspiciousRecords())
-                .thenReturn(List.of(record));
+                .thenReturn(List.of(mitigationRecord));
 
         mockMvc.perform(get("/api/suspicious-ips"))
                 .andExpect(status().isOk())
@@ -43,13 +43,13 @@ class MitigationControllerTest {
 
     @Test
     void getBlacklist_ShouldReturnBlockedRecords() throws Exception {
-        MitigationRecord record = new MitigationRecord("10.0.0.9");
-        record.registerAlert("Alert 1");
-        record.registerAlert("Alert 2");
-        record.registerAlert("Alert 3");
+        MitigationRecord mitigationRecord = new MitigationRecord("10.0.0.9");
+        mitigationRecord.registerAlert("Alert 1");
+        mitigationRecord.registerAlert("Alert 2");
+        mitigationRecord.registerAlert("Alert 3");
 
         when(mitigationService.getBlacklist())
-                .thenReturn(List.of(record));
+                .thenReturn(List.of(mitigationRecord));
 
         mockMvc.perform(get("/api/blacklist"))
                 .andExpect(status().isOk())
