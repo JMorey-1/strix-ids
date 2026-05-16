@@ -14,12 +14,6 @@ on:
         required: true
         type: string
 
-# The workflow needs package write access to add version tags
-# and contents write access to create the GitHub Release.
-permissions:
-  contents: write
-  packages: write
-
 # Prevent two release workflows from running at the same time.
 concurrency:
   group: versioned-release
@@ -33,6 +27,7 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-latest
+    permissions: {}
 
     outputs:
       release_version: ${{ steps.meta.outputs.release_version }}
@@ -112,6 +107,8 @@ jobs:
     name: Validate source images
     runs-on: ubuntu-latest
     needs: prepare
+    permissions:
+      packages: read
 
     steps:
       - name: Log in to GitHub Container Registry
@@ -137,6 +134,8 @@ jobs:
     needs:
       - prepare
       - validate-source-images
+    permissions:
+      packages: write
 
     steps:
       - name: Log in to GitHub Container Registry
@@ -173,8 +172,13 @@ jobs:
     needs:
       - prepare
       - tag-release-images
+    permissions:
+      contents: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Create release notes
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
@@ -210,6 +214,7 @@ jobs:
           SOURCE_IMAGE_TAG: ${{ needs.prepare.outputs.source_image_tag }}
         run: |
           gh release create "$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$SOURCE_IMAGE_TAG" \
             --title "Strix $RELEASE_VERSION" \
             --notes-file release-notes.md
