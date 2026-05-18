@@ -1,0 +1,637 @@
+name: Strix CD Pipeline
+
+# Runs after the Docker Images workflow publishes the SHA-tagged images.
+# Can also be run manually from main for a controlled redeploy or rollback.
+on:
+  workflow_run:
+    workflows: ["Docker Images"]
+    types:
+      - completed
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing full commit SHA image tag to deploy. Leave blank to use the current main commit SHA."
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: strix-cd-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Check that CD was started from a valid source.
+  check-source:
+    name: Check deployment source
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Validate trigger
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_run" && "$WORKFLOW_RUN_CONCLUSION" != "success" ]]; then
+            echo "Docker Images workflow did not complete successfully."
+            echo "Conclusion: $WORKFLOW_RUN_CONCLUSION"
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF_NAME_VALUE" != "main" ]]; then
+            echo "Manual CD runs must be started from main."
+            exit 1
+          fi
+
+          echo "Deployment source is valid."
+
+  # Build the immutable image references used throughout the CD pipeline.
+  prepare:
+    name: Prepare image set
+    runs-on: ubuntu-latest
+    needs: check-source
+
+    permissions:
+      contents: read
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      release_version: ${{ steps.meta.outputs.release_version }}
+      target_app_image: ${{ steps.meta.outputs.target_app_image }}
+      strix_ids_image: ${{ steps.meta.outputs.strix_ids_image }}
+      traffic_generator_image: ${{ steps.meta.outputs.traffic_generator_image }}
+      target_app_release_image: ${{ steps.meta.outputs.target_app_release_image }}
+      strix_ids_release_image: ${{ steps.meta.outputs.strix_ids_release_image }}
+      traffic_generator_release_image: ${{ steps.meta.outputs.traffic_generator_release_image }}
+
+    steps:
+      - name: Build deployment metadata
+        id: meta
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ -n "$IMAGE_TAG_INPUT" ]]; then
+            IMAGE_TAG="$IMAGE_TAG_INPUT"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            IMAGE_TAG="$WORKFLOW_RUN_HEAD_SHA"
+          else
+            IMAGE_TAG="$GITHUB_SHA"
+          fi
+
+          if [[ ! "$IMAGE_TAG" =~ ^[A-Fa-f0-9]{40}$ ]]; then
+            echo "Invalid image tag: $IMAGE_TAG"
+            echo "Expected a full 40-character commit SHA."
+            exit 1
+          fi
+
+          RELEASE_VERSION="v$(date -u +'%Y.%m.%d').${GITHUB_RUN_NUMBER}"
+
+          OWNER_LC=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          REPO_LC=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAMESPACE="${REGISTRY}/${OWNER_LC}/${REPO_LC}"
+
+          TARGET_APP_IMAGE="${IMAGE_NAMESPACE}/target-app:${IMAGE_TAG}"
+          STRIX_IDS_IMAGE="${IMAGE_NAMESPACE}/strix-ids:${IMAGE_TAG}"
+          TRAFFIC_GENERATOR_IMAGE="${IMAGE_NAMESPACE}/traffic-generator:${IMAGE_TAG}"
+
+          TARGET_APP_RELEASE_IMAGE="${IMAGE_NAMESPACE}/target-app:${RELEASE_VERSION}"
+          STRIX_IDS_RELEASE_IMAGE="${IMAGE_NAMESPACE}/strix-ids:${RELEASE_VERSION}"
+          TRAFFIC_GENERATOR_RELEASE_IMAGE="${IMAGE_NAMESPACE}/traffic-generator:${RELEASE_VERSION}"
+
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+
+          echo "target_app_image=${TARGET_APP_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "strix_ids_image=${STRIX_IDS_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "traffic_generator_image=${TRAFFIC_GENERATOR_IMAGE}" >> "$GITHUB_OUTPUT"
+
+          echo "target_app_release_image=${TARGET_APP_RELEASE_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "strix_ids_release_image=${STRIX_IDS_RELEASE_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "traffic_generator_release_image=${TRAFFIC_GENERATOR_RELEASE_IMAGE}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## CD deployment metadata"
+            echo ""
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo "Planned release version: \`${RELEASE_VERSION}\`"
+            echo ""
+            echo "### Image set"
+            echo "- Target app: \`${TARGET_APP_IMAGE}\`"
+            echo "- Strix IDS: \`${STRIX_IDS_IMAGE}\`"
+            echo "- Traffic generator: \`${TRAFFIC_GENERATOR_IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Confirm that the Docker Images workflow published all expected images.
+  validate-images:
+    name: Validate published images
+    runs-on: ubuntu-latest
+    needs: prepare
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Inspect published image set
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
+        run: |
+          docker buildx imagetools inspect "$TARGET_APP_IMAGE"
+          docker buildx imagetools inspect "$STRIX_IDS_IMAGE"
+          docker buildx imagetools inspect "$TRAFFIC_GENERATOR_IMAGE"
+
+  # Dev stage runs local container smoke checks on the GitHub runner.
+  dev:
+    name: Promote to dev
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - validate-images
+    environment:
+      name: dev
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Run dev smoke checks
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+        run: |
+          cleanup() {
+            docker rm -f strix-ids strix-target-app || true
+            docker network rm strix-smoke || true
+          }
+
+          trap cleanup EXIT
+
+          docker network create strix-smoke
+
+          LOCAL_SCHEME="http"
+          LOCAL_IDS_URL="${LOCAL_SCHEME}://localhost:8081"
+          LOCAL_TARGET_APP_URL="${LOCAL_SCHEME}://localhost:8080"
+          LOCAL_IDS_EVENT_URL="${LOCAL_SCHEME}://strix-ids:8081/events/request"
+
+          docker run -d \
+            --name strix-ids \
+            --network strix-smoke \
+            -p 8081:8081 \
+            -e SPRING_DATASOURCE_URL=jdbc:h2:mem:strix-smoke \
+            "$STRIX_IDS_IMAGE"
+
+          docker run -d \
+            --name strix-target-app \
+            --network strix-smoke \
+            -p 8080:8080 \
+            -e STRIX_IDS_URL="$LOCAL_IDS_EVENT_URL" \
+            "$TARGET_APP_IMAGE"
+
+          wait_for_url() {
+            url="$1"
+
+            for i in {1..30}; do
+              if curl -fsS "$url" > /dev/null; then
+                echo "Smoke check passed: $url"
+                return 0
+              fi
+
+              sleep 2
+            done
+
+            echo "Timed out waiting for $url"
+            docker logs strix-ids || true
+            docker logs strix-target-app || true
+            return 1
+          }
+
+          wait_for_url "${LOCAL_IDS_URL}/model/status"
+          wait_for_url "${LOCAL_IDS_URL}/dashboard.html"
+          wait_for_url "${LOCAL_IDS_URL}/api/status"
+
+          wait_for_url "${LOCAL_TARGET_APP_URL}/health"
+          wait_for_url "${LOCAL_TARGET_APP_URL}/products"
+
+          curl -fsS "${LOCAL_TARGET_APP_URL}/products" > /dev/null
+          sleep 3
+          wait_for_url "${LOCAL_IDS_URL}/api/status"
+
+      - name: Record dev promotion
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+        run: |
+          {
+            echo "## Dev promotion"
+            echo ""
+            echo "Environment: \`${ENVIRONMENT_NAME:-dev}\`"
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo ""
+            echo "### Promoted image set"
+            echo "- Target app: \`${TARGET_APP_IMAGE}\`"
+            echo "- Strix IDS: \`${STRIX_IDS_IMAGE}\`"
+            echo "- Traffic generator: \`${TRAFFIC_GENERATOR_IMAGE}\`"
+            echo ""
+            echo "Dev smoke checks: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Staging is an approval and verification stage for the same immutable image set.
+  staging:
+    name: Promote to staging
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - dev
+    environment:
+      name: staging
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Reconfirm staging image set
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
+        run: |
+          docker buildx imagetools inspect "$TARGET_APP_IMAGE"
+          docker buildx imagetools inspect "$STRIX_IDS_IMAGE"
+          docker buildx imagetools inspect "$TRAFFIC_GENERATOR_IMAGE"
+
+      - name: Record staging approval
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+        run: |
+          {
+            echo "## Staging promotion"
+            echo ""
+            echo "Environment: \`${ENVIRONMENT_NAME:-staging}\`"
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo ""
+            echo "### Approved image set"
+            echo "- Target app: \`${TARGET_APP_IMAGE}\`"
+            echo "- Strix IDS: \`${STRIX_IDS_IMAGE}\`"
+            echo "- Traffic generator: \`${TRAFFIC_GENERATOR_IMAGE}\`"
+            echo ""
+            echo "Status: staging approval and image verification completed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Production deploys the approved image set to Azure Container Apps.
+  production:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - staging
+    environment:
+      name: production
+
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+
+    outputs:
+      ids_url: ${{ steps.ids.outputs.ids_url }}
+      target_app_url: ${{ steps.target.outputs.target_app_url }}
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Strix IDS
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_IDS_APP_NAME: ${{ vars.AZURE_IDS_APP_NAME }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+        run: |
+          az containerapp update \
+            --name "$AZURE_IDS_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$STRIX_IDS_IMAGE" \
+            --set-env-vars SPRING_DATASOURCE_URL=jdbc:h2:mem:strix-azure
+
+          az containerapp ingress enable \
+            --name "$AZURE_IDS_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --type external \
+            --target-port 8081 \
+            --transport auto
+
+      - name: Resolve IDS URL
+        id: ids
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_IDS_APP_NAME: ${{ vars.AZURE_IDS_APP_NAME }}
+        run: |
+          IDS_FQDN=$(az containerapp show \
+            --name "$AZURE_IDS_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.configuration.ingress.fqdn" \
+            -o tsv)
+
+          IDS_URL="https://${IDS_FQDN}"
+          IDS_EVENT_URL="${IDS_URL}/events/request"
+
+          echo "ids_url=${IDS_URL}" >> "$GITHUB_OUTPUT"
+          echo "ids_event_url=${IDS_EVENT_URL}" >> "$GITHUB_OUTPUT"
+
+          echo "IDS URL: ${IDS_URL}"
+
+      - name: Deploy target app
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_TARGET_APP_NAME: ${{ vars.AZURE_TARGET_APP_NAME }}
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          IDS_EVENT_URL: ${{ steps.ids.outputs.ids_event_url }}
+        run: |
+          az containerapp update \
+            --name "$AZURE_TARGET_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$TARGET_APP_IMAGE" \
+            --set-env-vars STRIX_IDS_URL="$IDS_EVENT_URL"
+
+          az containerapp ingress enable \
+            --name "$AZURE_TARGET_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --type external \
+            --target-port 8080 \
+            --transport auto
+
+      - name: Resolve target app URL
+        id: target
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_TARGET_APP_NAME: ${{ vars.AZURE_TARGET_APP_NAME }}
+        run: |
+          TARGET_APP_FQDN=$(az containerapp show \
+            --name "$AZURE_TARGET_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.configuration.ingress.fqdn" \
+            -o tsv)
+
+          TARGET_APP_URL="https://${TARGET_APP_FQDN}"
+
+          echo "target_app_url=${TARGET_APP_URL}" >> "$GITHUB_OUTPUT"
+
+          echo "Target app URL: ${TARGET_APP_URL}"
+
+      - name: Run Azure smoke checks
+        env:
+          IDS_URL: ${{ steps.ids.outputs.ids_url }}
+          TARGET_APP_URL: ${{ steps.target.outputs.target_app_url }}
+        run: |
+          wait_for_url() {
+            url="$1"
+
+            for i in {1..60}; do
+              if curl -fsS "$url" > /dev/null; then
+                echo "Smoke check passed: $url"
+                return 0
+              fi
+
+              sleep 5
+            done
+
+            echo "Timed out waiting for $url"
+            return 1
+          }
+
+          wait_for_url "${IDS_URL}/model/status"
+          wait_for_url "${IDS_URL}/dashboard.html"
+          wait_for_url "${IDS_URL}/api/status"
+
+          wait_for_url "${TARGET_APP_URL}/health"
+          wait_for_url "${TARGET_APP_URL}/products"
+
+          curl -fsS "${TARGET_APP_URL}/products" > /dev/null
+          sleep 3
+          wait_for_url "${IDS_URL}/api/status"
+
+      - name: Record production deployment
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
+          IDS_URL: ${{ steps.ids.outputs.ids_url }}
+          TARGET_APP_URL: ${{ steps.target.outputs.target_app_url }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINERAPPS_ENVIRONMENT: ${{ vars.AZURE_CONTAINERAPPS_ENVIRONMENT }}
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+        run: |
+          {
+            echo "## Production deployment"
+            echo ""
+            echo "Environment: \`${ENVIRONMENT_NAME:-production}\`"
+            echo "Resource group: \`${AZURE_RESOURCE_GROUP}\`"
+            echo "Container Apps environment: \`${AZURE_CONTAINERAPPS_ENVIRONMENT}\`"
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo ""
+            echo "### Deployed image set"
+            echo "- Target app: \`${TARGET_APP_IMAGE}\`"
+            echo "- Strix IDS: \`${STRIX_IDS_IMAGE}\`"
+            echo "- Traffic generator: \`${TRAFFIC_GENERATOR_IMAGE}\`"
+            echo ""
+            echo "### Azure URLs"
+            echo "- Strix IDS: ${IDS_URL}"
+            echo "- Target app: ${TARGET_APP_URL}"
+            echo ""
+            echo "Azure smoke checks: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Create the GitHub Release only after production deployment succeeds.
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - production
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+      - name: Tag released image set
+        env:
+          TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
+          STRIX_IDS_IMAGE: ${{ needs.prepare.outputs.strix_ids_image }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ needs.prepare.outputs.traffic_generator_image }}
+          TARGET_APP_RELEASE_IMAGE: ${{ needs.prepare.outputs.target_app_release_image }}
+          STRIX_IDS_RELEASE_IMAGE: ${{ needs.prepare.outputs.strix_ids_release_image }}
+          TRAFFIC_GENERATOR_RELEASE_IMAGE: ${{ needs.prepare.outputs.traffic_generator_release_image }}
+        run: |
+          docker buildx imagetools create \
+            -t "$TARGET_APP_RELEASE_IMAGE" \
+            "$TARGET_APP_IMAGE"
+
+          docker buildx imagetools create \
+            -t "$STRIX_IDS_RELEASE_IMAGE" \
+            "$STRIX_IDS_IMAGE"
+
+          docker buildx imagetools create \
+            -t "$TRAFFIC_GENERATOR_RELEASE_IMAGE" \
+            "$TRAFFIC_GENERATOR_IMAGE"
+
+      - name: Create release notes
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          TARGET_APP_RELEASE_IMAGE: ${{ needs.prepare.outputs.target_app_release_image }}
+          STRIX_IDS_RELEASE_IMAGE: ${{ needs.prepare.outputs.strix_ids_release_image }}
+          TRAFFIC_GENERATOR_RELEASE_IMAGE: ${{ needs.prepare.outputs.traffic_generator_release_image }}
+          IDS_URL: ${{ needs.production.outputs.ids_url }}
+          TARGET_APP_URL: ${{ needs.production.outputs.target_app_url }}
+        run: |
+          cat > release-notes.md <<EOF
+          # Strix ${RELEASE_VERSION}
+
+          This release was created after the Strix CD pipeline promoted and deployed the verified image set to production.
+
+          ## Deployed commit
+
+          ${IMAGE_TAG}
+
+          ## Versioned Docker images
+
+          - ${TARGET_APP_RELEASE_IMAGE}
+          - ${STRIX_IDS_RELEASE_IMAGE}
+          - ${TRAFFIC_GENERATOR_RELEASE_IMAGE}
+
+          ## Azure deployment
+
+          - Strix IDS: ${IDS_URL}
+          - Target app: ${TARGET_APP_URL}
+
+          ## Verification
+
+          Production deployment and Azure smoke checks completed successfully before this release was created.
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+        run: |
+          gh release create "$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$IMAGE_TAG" \
+            --title "Strix ${RELEASE_VERSION}" \
+            --notes-file release-notes.md
+
+      - name: Record release
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          TARGET_APP_RELEASE_IMAGE: ${{ needs.prepare.outputs.target_app_release_image }}
+          STRIX_IDS_RELEASE_IMAGE: ${{ needs.prepare.outputs.strix_ids_release_image }}
+          TRAFFIC_GENERATOR_RELEASE_IMAGE: ${{ needs.prepare.outputs.traffic_generator_release_image }}
+        run: |
+          {
+            echo "## Release"
+            echo ""
+            echo "Release version: \`${RELEASE_VERSION}\`"
+            echo "Source image tag: \`${IMAGE_TAG}\`"
+            echo ""
+            echo "### Versioned images"
+            echo "- Target app: \`${TARGET_APP_RELEASE_IMAGE}\`"
+            echo "- Strix IDS: \`${STRIX_IDS_RELEASE_IMAGE}\`"
+            echo "- Traffic generator: \`${TRAFFIC_GENERATOR_RELEASE_IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Record lightweight DORA evidence for later measurement improvements.
+  dora-evidence:
+    name: Record DORA evidence
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - production
+      - release
+    if: always()
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Create lightweight DORA evidence
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
+          PRODUCTION_RESULT: ${{ needs.production.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+          IDS_URL: ${{ needs.production.outputs.ids_url }}
+          TARGET_APP_URL: ${{ needs.production.outputs.target_app_url }}
+        run: |
+          DEPLOYMENT_TIME_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat > dora-evidence.json <<EOF
+          {
+            "environment": "production",
+            "deployment_status": "${PRODUCTION_RESULT}",
+            "release_status": "${RELEASE_RESULT}",
+            "commit_sha": "${IMAGE_TAG}",
+            "release_version": "${RELEASE_VERSION}",
+            "deployment_time_utc": "${DEPLOYMENT_TIME_UTC}",
+            "strix_ids_url": "${IDS_URL}",
+            "target_app_url": "${TARGET_APP_URL}"
+          }
+          EOF
+
+          {
+            echo "## DORA evidence"
+            echo ""
+            echo "Environment: \`production\`"
+            echo "Deployment status: \`${PRODUCTION_RESULT}\`"
+            echo "Release status: \`${RELEASE_RESULT}\`"
+            echo "Commit SHA: \`${IMAGE_TAG}\`"
+            echo "Release version: \`${RELEASE_VERSION}\`"
+            echo "Deployment time UTC: \`${DEPLOYMENT_TIME_UTC}\`"
+            echo ""
+            echo "This lightweight evidence can support deployment frequency, lead time and change failure analysis in a later metrics sprint."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload DORA evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dora-evidence
+          path: dora-evidence.json
+          if-no-files-found: error
