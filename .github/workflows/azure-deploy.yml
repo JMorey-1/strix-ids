@@ -80,22 +80,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Configure GHCR registry access
-        env:
-          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          AZURE_IDS_APP_NAME: ${{ vars.AZURE_IDS_APP_NAME }}
-          AZURE_TARGET_APP_NAME: ${{ vars.AZURE_TARGET_APP_NAME }}
-        run: |
-          az containerapp registry set \
-            --name "$AZURE_IDS_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --server ghcr.io
-
-          az containerapp registry set \
-            --name "$AZURE_TARGET_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --server ghcr.io
-
       - name: Deploy Strix IDS
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
