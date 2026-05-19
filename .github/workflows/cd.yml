@@ -110,16 +110,18 @@ jobs:
           STRIX_IDS_RELEASE_IMAGE="${IMAGE_NAMESPACE}/strix-ids:${RELEASE_VERSION}"
           TRAFFIC_GENERATOR_RELEASE_IMAGE="${IMAGE_NAMESPACE}/traffic-generator:${RELEASE_VERSION}"
 
-          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "image_tag=${IMAGE_TAG}"
+            echo "release_version=${RELEASE_VERSION}"
 
-          echo "target_app_image=${TARGET_APP_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "strix_ids_image=${STRIX_IDS_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "traffic_generator_image=${TRAFFIC_GENERATOR_IMAGE}" >> "$GITHUB_OUTPUT"
+            echo "target_app_image=${TARGET_APP_IMAGE}"
+            echo "strix_ids_image=${STRIX_IDS_IMAGE}"
+            echo "traffic_generator_image=${TRAFFIC_GENERATOR_IMAGE}"
 
-          echo "target_app_release_image=${TARGET_APP_RELEASE_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "strix_ids_release_image=${STRIX_IDS_RELEASE_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "traffic_generator_release_image=${TRAFFIC_GENERATOR_RELEASE_IMAGE}" >> "$GITHUB_OUTPUT"
+            echo "target_app_release_image=${TARGET_APP_RELEASE_IMAGE}"
+            echo "strix_ids_release_image=${STRIX_IDS_RELEASE_IMAGE}"
+            echo "traffic_generator_release_image=${TRAFFIC_GENERATOR_RELEASE_IMAGE}"
+          } >> "$GITHUB_OUTPUT"
 
           {
             echo "## CD deployment metadata"
@@ -205,7 +207,7 @@ jobs:
           wait_for_url() {
             url="$1"
 
-            for i in {1..30}; do
+            for _ in {1..30}; do
               if curl -fsS "$url" > /dev/null; then
                 echo "Smoke check passed: $url"
                 return 0
@@ -361,8 +363,10 @@ jobs:
           IDS_URL="https://${IDS_FQDN}"
           IDS_EVENT_URL="${IDS_URL}/events/request"
 
-          echo "ids_url=${IDS_URL}" >> "$GITHUB_OUTPUT"
-          echo "ids_event_url=${IDS_EVENT_URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "ids_url=${IDS_URL}"
+            echo "ids_event_url=${IDS_EVENT_URL}"
+          } >> "$GITHUB_OUTPUT"
 
           echo "IDS URL: ${IDS_URL}"
 
@@ -412,7 +416,7 @@ jobs:
           wait_for_url() {
             url="$1"
 
-            for i in {1..60}; do
+            for _ in {1..60}; do
               if curl -fsS "$url" > /dev/null; then
                 echo "Smoke check passed: $url"
                 return 0
