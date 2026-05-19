@@ -10,27 +10,28 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/internal/mitigation")
 public class TargetMitigationController {
 
-    private final TargetMitigationService targetMitigationService;
+  private final TargetMitigationService targetMitigationService;
 
-    public TargetMitigationController(TargetMitigationService targetMitigationService) {
-        this.targetMitigationService = targetMitigationService;
+  public TargetMitigationController(TargetMitigationService targetMitigationService) {
+    this.targetMitigationService = targetMitigationService;
+  }
+
+  @PostMapping("/actions")
+  public ResponseEntity<String> receiveMitigationAction(
+      @RequestBody MitigationActionRequest request) {
+    if (request == null || request.getIpAddress() == null || request.getActionType() == null) {
+      return ResponseEntity.badRequest().body("Missing mitigation action details");
     }
 
-    @PostMapping("/actions")
-    public ResponseEntity<String> receiveMitigationAction(@RequestBody MitigationActionRequest request) {
-        if (request == null || request.getIpAddress() == null || request.getActionType() == null) {
-            return ResponseEntity.badRequest().body("Missing mitigation action details");
-        }
+    targetMitigationService.applyMitigation(request);
 
-        targetMitigationService.applyMitigation(request);
+    return ResponseEntity.ok("Mitigation action applied");
+  }
 
-        return ResponseEntity.ok("Mitigation action applied");
-    }
+  @PostMapping("/reset")
+  public ResponseEntity<String> resetMitigations() {
+    targetMitigationService.clearMitigations();
 
-    @PostMapping("/reset")
-    public ResponseEntity<String> resetMitigations() {
-        targetMitigationService.clearMitigations();
-
-        return ResponseEntity.ok("Target mitigation state reset");
-    }
+    return ResponseEntity.ok("Target mitigation state reset");
+  }
 }

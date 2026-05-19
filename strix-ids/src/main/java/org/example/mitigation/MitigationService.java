@@ -1,88 +1,87 @@
 package org.example.mitigation;
 
+import java.util.List;
 import org.example.idslog.IdsEventLevel;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 /**
- * Handles the mitigation state for suspicious IP addresses.
- * This service takes WATCH and ALERT events from the IDS and builds up a
- * suspicion score for each IP. The records are saved through the repository,
- * so the dashboard can show suspicious IPs and blocked IPs from the database.
+ * Handles the mitigation state for suspicious IP addresses. This service takes WATCH and ALERT
+ * events from the IDS and builds up a suspicion score for each IP. The records are saved through
+ * the repository, so the dashboard can show suspicious IPs and blocked IPs from the database.
  */
 @Service
 public class MitigationService {
 
-    private final MitigationRecordRepository mitigationRecordRepository;
-    private final MitigationActionClient mitigationActionClient;
+  private final MitigationRecordRepository mitigationRecordRepository;
+  private final MitigationActionClient mitigationActionClient;
 
-    public MitigationService(MitigationRecordRepository mitigationRecordRepository,
-                             MitigationActionClient mitigationActionClient) {
-        this.mitigationRecordRepository = mitigationRecordRepository;
-        this.mitigationActionClient = mitigationActionClient;
+  public MitigationService(
+      MitigationRecordRepository mitigationRecordRepository,
+      MitigationActionClient mitigationActionClient) {
+    this.mitigationRecordRepository = mitigationRecordRepository;
+    this.mitigationActionClient = mitigationActionClient;
+  }
+
+  public synchronized void processDetectionEvent(
+      String ipAddress, IdsEventLevel level, String reason) {
+    // Only suspicious or alert-level events should affect mitigation.
+    if (level != IdsEventLevel.WATCH && level != IdsEventLevel.ALERT) {
+      return;
     }
 
-    public synchronized void processDetectionEvent(String ipAddress, IdsEventLevel level, String reason) {
-        // Only suspicious or alert-level events should affect mitigation.
-        if (level != IdsEventLevel.WATCH && level != IdsEventLevel.ALERT) {
-            return;
-        }
+    // Reuse the existing record for this IP, or create one if it is new.
+    MitigationRecord mitigationRecord =
+        mitigationRecordRepository
+            .findByIpAddress(ipAddress)
+            .orElseGet(() -> new MitigationRecord(ipAddress));
 
-        // Reuse the existing record for this IP, or create one if it is new.
-        MitigationRecord mitigationRecord = mitigationRecordRepository.findByIpAddress(ipAddress)
-                .orElseGet(() -> new MitigationRecord(ipAddress));
+    MitigationStatus previousStatus = mitigationRecord.getStatus();
 
-        MitigationStatus previousStatus = mitigationRecord.getStatus();
-
-        if (level == IdsEventLevel.WATCH) {
-            mitigationRecord.registerWatch(reason);
-        }
-
-        if (level == IdsEventLevel.ALERT) {
-            mitigationRecord.registerAlert(reason);
-        }
-
-        // Save the updated score, status and reason back to H2.
-        mitigationRecordRepository.save(mitigationRecord);
-
-        sendMitigationActionIfStatusChanged(mitigationRecord, previousStatus);
+    if (level == IdsEventLevel.WATCH) {
+      mitigationRecord.registerWatch(reason);
     }
 
-    private void sendMitigationActionIfStatusChanged(MitigationRecord mitigationRecord,
-                                                     MitigationStatus previousStatus) {
-        MitigationStatus currentStatus = mitigationRecord.getStatus();
-
-        if (previousStatus == currentStatus) {
-            return;
-        }
-
-        if (currentStatus == MitigationStatus.SUSPICIOUS) {
-            mitigationActionClient.sendRateLimitAction(mitigationRecord);
-            return;
-        }
-
-        if (currentStatus == MitigationStatus.BLOCKED) {
-            mitigationActionClient.sendBlacklistAction(mitigationRecord);
-        }
+    if (level == IdsEventLevel.ALERT) {
+      mitigationRecord.registerAlert(reason);
     }
 
-    public List<MitigationRecord> getSuspiciousRecords() {
-        // The suspicious IP panel shows every IP currently being tracked.
-        return mitigationRecordRepository.findByStatusIn(List.of(
-                MitigationStatus.WATCH,
-                MitigationStatus.SUSPICIOUS,
-                MitigationStatus.BLOCKED
-        ));
+    // Save the updated score, status and reason back to H2.
+    mitigationRecordRepository.save(mitigationRecord);
+
+    sendMitigationActionIfStatusChanged(mitigationRecord, previousStatus);
+  }
+
+  private void sendMitigationActionIfStatusChanged(
+      MitigationRecord mitigationRecord, MitigationStatus previousStatus) {
+    MitigationStatus currentStatus = mitigationRecord.getStatus();
+
+    if (previousStatus == currentStatus) {
+      return;
     }
 
-    public List<MitigationRecord> getBlacklist() {
-        // The blacklist panel only shows IPs that reached the blocked state.
-        return mitigationRecordRepository.findByStatus(MitigationStatus.BLOCKED);
+    if (currentStatus == MitigationStatus.SUSPICIOUS) {
+      mitigationActionClient.sendRateLimitAction(mitigationRecord);
+      return;
     }
 
-    public void resetMitigationState() {
-        // Useful before demos or test runs so old mitigation data does not interfere.
-        mitigationRecordRepository.deleteAll();
+    if (currentStatus == MitigationStatus.BLOCKED) {
+      mitigationActionClient.sendBlacklistAction(mitigationRecord);
     }
+  }
+
+  public List<MitigationRecord> getSuspiciousRecords() {
+    // The suspicious IP panel shows every IP currently being tracked.
+    return mitigationRecordRepository.findByStatusIn(
+        List.of(MitigationStatus.WATCH, MitigationStatus.SUSPICIOUS, MitigationStatus.BLOCKED));
+  }
+
+  public List<MitigationRecord> getBlacklist() {
+    // The blacklist panel only shows IPs that reached the blocked state.
+    return mitigationRecordRepository.findByStatus(MitigationStatus.BLOCKED);
+  }
+
+  public void resetMitigationState() {
+    // Useful before demos or test runs so old mitigation data does not interfere.
+    mitigationRecordRepository.deleteAll();
+  }
 }
