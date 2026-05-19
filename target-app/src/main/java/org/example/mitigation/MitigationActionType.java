@@ -1,9 +1,7 @@
 package org.example.mitigation;
 
-/**
- * Represents the mitigation actions that the target application can enforce.
- */
+/** Represents the mitigation actions that the target application can enforce. */
 public enum MitigationActionType {
-    RATE_LIMIT,
-    BLACKLIST
+  RATE_LIMIT,
+  BLACKLIST
 }
