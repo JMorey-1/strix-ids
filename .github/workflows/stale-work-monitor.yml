@@ -1,0 +1,343 @@
+name: Stale Work Monitor
+
+# Supports GitHub Flow by reporting branches and PRs that are becoming long-lived.
+# The workflow does not close or delete anything automatically.
+on:
+  schedule:
+    - cron: "0 9 * * MON"
+
+  workflow_dispatch:
+
+concurrency:
+  group: stale-work-monitor
+  cancel-in-progress: false
+
+jobs:
+  report-stale-work:
+    name: Report stale branches and PRs
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+      checks: read
+      statuses: read
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      PRODUCT_OWNER: jmorey-1
+      REPORT_TITLE: Weekly stale work report
+      STALE_PR_DAYS: 7
+      STALE_BRANCH_DAYS: 7
+      REVIEW_WAIT_DAYS: 2
+      REQUESTED_CHANGES_DAYS: 3
+
+    steps:
+      - name: Create or update stale work report
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+          from datetime import datetime, timezone
+
+          repository = os.environ["REPOSITORY"]
+          product_owner = os.environ["PRODUCT_OWNER"]
+          report_title = os.environ["REPORT_TITLE"]
+
+          stale_pr_days = int(os.environ["STALE_PR_DAYS"])
+          stale_branch_days = int(os.environ["STALE_BRANCH_DAYS"])
+          review_wait_days = int(os.environ["REVIEW_WAIT_DAYS"])
+          requested_changes_days = int(os.environ["REQUESTED_CHANGES_DAYS"])
+
+          ignored_branches = {"main", "master", "gh-pages"}
+
+          now = datetime.now(timezone.utc)
+
+          def run_command(command, check=True):
+              result = subprocess.run(
+                  command,
+                  text=True,
+                  capture_output=True,
+                  check=False
+              )
+
+              if check and result.returncode != 0:
+                  print(result.stdout)
+                  print(result.stderr)
+                  raise SystemExit(result.returncode)
+
+              return result.stdout.strip()
+
+          def parse_datetime(value):
+              if not value:
+                  return None
+
+              if value.endswith("Z"):
+                  value = value.replace("Z", "+00:00")
+
+              return datetime.fromisoformat(value)
+
+          def age_in_days(value):
+              parsed = parse_datetime(value)
+              if parsed is None:
+                  return 0
+
+              return (now - parsed).days
+
+          def format_pr(pr):
+              return (
+                  f"- [#{pr['number']} {pr['title']}]({pr['url']}) "
+                  f"by @{pr['author']['login']} "
+                  f"`{pr['headRefName']}` "
+                  f"(created {age_in_days(pr['createdAt'])} days ago, "
+                  f"updated {age_in_days(pr['updatedAt'])} days ago)"
+              )
+
+          def has_failing_checks(pr):
+              checks = pr.get("statusCheckRollup") or []
+
+              failing_states = {
+                  "FAILURE",
+                  "ERROR",
+                  "ACTION_REQUIRED",
+                  "TIMED_OUT",
+                  "CANCELLED"
+              }
+
+              for check in checks:
+                  state = check.get("state") or check.get("conclusion")
+                  if state in failing_states:
+                      return True
+
+              return False
+
+          prs_json = run_command([
+              "gh", "pr", "list",
+              "--repo", repository,
+              "--state", "open",
+              "--limit", "100",
+              "--json",
+              "number,title,url,author,createdAt,updatedAt,isDraft,headRefName,reviewDecision,statusCheckRollup"
+          ])
+
+          prs = json.loads(prs_json) if prs_json else []
+
+          open_pr_branches = {
+              pr["headRefName"]
+              for pr in prs
+              if pr.get("headRefName")
+          }
+
+          old_prs = [
+              pr for pr in prs
+              if age_in_days(pr["createdAt"]) >= stale_pr_days
+          ]
+
+          inactive_prs = [
+              pr for pr in prs
+              if age_in_days(pr["updatedAt"]) >= stale_pr_days
+          ]
+
+          old_draft_prs = [
+              pr for pr in prs
+              if pr.get("isDraft") and age_in_days(pr["createdAt"]) >= stale_pr_days
+          ]
+
+          failing_prs = [
+              pr for pr in prs
+              if has_failing_checks(pr)
+          ]
+
+          waiting_review_prs = [
+              pr for pr in prs
+              if pr.get("reviewDecision") == "REVIEW_REQUIRED"
+              and age_in_days(pr["createdAt"]) >= review_wait_days
+          ]
+
+          requested_changes_prs = [
+              pr for pr in prs
+              if pr.get("reviewDecision") == "CHANGES_REQUESTED"
+              and age_in_days(pr["updatedAt"]) >= requested_changes_days
+          ]
+
+          branches_json = run_command([
+              "gh", "api",
+              f"repos/{repository}/branches",
+              "--paginate"
+          ])
+
+          branches = json.loads(branches_json) if branches_json else []
+
+          stale_branches = []
+          branches_without_pr = []
+
+          for branch in branches:
+              branch_name = branch["name"]
+
+              if branch_name in ignored_branches:
+                  continue
+
+              if branch_name.startswith("dependabot/"):
+                  continue
+
+              commit_sha = branch["commit"]["sha"]
+
+              commit_json = run_command([
+                  "gh", "api",
+                  f"repos/{repository}/commits/{commit_sha}"
+              ])
+
+              commit = json.loads(commit_json)
+              commit_date = commit["commit"]["committer"]["date"]
+              branch_age_days = age_in_days(commit_date)
+
+              branch_entry = {
+                  "name": branch_name,
+                  "sha": commit_sha,
+                  "date": commit_date,
+                  "age_days": branch_age_days
+              }
+
+              if branch_age_days >= stale_branch_days:
+                  stale_branches.append(branch_entry)
+
+              if branch_name not in open_pr_branches and branch_age_days >= stale_branch_days:
+                  branches_without_pr.append(branch_entry)
+
+          def add_section(lines, heading, items, formatter):
+              lines.append(f"## {heading}")
+              lines.append("")
+
+              if not items:
+                  lines.append("No items found.")
+              else:
+                  for item in items:
+                      lines.append(formatter(item))
+
+              lines.append("")
+
+          def format_branch(branch):
+              return (
+                  f"- `{branch['name']}` "
+                  f"(last updated {branch['age_days']} days ago, "
+                  f"commit `{branch['sha'][:7]}`)"
+              )
+
+          report_lines = [
+              f"# {report_title}",
+              "",
+              f"Generated: `{now.strftime('%Y-%m-%d %H:%M:%S UTC')}`",
+              "",
+              f"Product owner: @{product_owner}",
+              "",
+              "This report supports the GitHub Flow branching strategy by identifying branches and pull requests that may be becoming long-lived.",
+              "No branches or pull requests are closed automatically. The product owner should review the items and decide whether they should be kept active, rebased, merged, closed or removed.",
+              "",
+              "## Thresholds",
+              "",
+              f"- Open PR age threshold: `{stale_pr_days}` days",
+              f"- Open PR inactivity threshold: `{stale_pr_days}` days",
+              f"- Review wait threshold: `{review_wait_days}` days",
+              f"- Requested changes inactivity threshold: `{requested_changes_days}` days",
+              f"- Branch inactivity threshold: `{stale_branch_days}` days",
+              ""
+          ]
+
+          add_section(report_lines, "Open PRs older than threshold", old_prs, format_pr)
+          add_section(report_lines, "Open PRs not updated recently", inactive_prs, format_pr)
+          add_section(report_lines, "Draft PRs older than threshold", old_draft_prs, format_pr)
+          add_section(report_lines, "PRs with failing checks", failing_prs, format_pr)
+          add_section(report_lines, "PRs waiting for review", waiting_review_prs, format_pr)
+          add_section(report_lines, "PRs with requested changes and no recent update", requested_changes_prs, format_pr)
+          add_section(report_lines, "Branches not updated recently", stale_branches, format_branch)
+          add_section(report_lines, "Branches without open PRs", branches_without_pr, format_branch)
+
+          report_lines.extend([
+              "## Product owner action",
+              "",
+              f"@{product_owner} please review any listed items and decide whether each one should be kept active, rebased, converted to a PR, merged, closed or removed.",
+              "",
+              "Suggested actions:",
+              "",
+              "- Keep active if the work is still moving.",
+              "- Ask the author for an update if the work is blocked.",
+              "- Rebase if the branch is drifting too far from `main`.",
+              "- Convert branch work into a PR if it is not already visible for review.",
+              "- Close or delete stale work only after confirmation.",
+              ""
+          ])
+
+          report_body = "\n".join(report_lines)
+
+          with open("stale-work-report.md", "w", encoding="utf-8") as report_file:
+              report_file.write(report_body)
+
+          # Create labels if they do not already exist.
+          labels = [
+              ("stale-work", "f9d0c4", "Automated stale branch and PR report"),
+              ("process", "c5def5", "Process and governance improvement"),
+              ("product-owner-review", "fbca04", "Requires product owner review")
+          ]
+
+          for name, color, description in labels:
+              run_command([
+                  "gh", "label", "create", name,
+                  "--repo", repository,
+                  "--color", color,
+                  "--description", description
+              ], check=False)
+
+          existing_issues_json = run_command([
+              "gh", "issue", "list",
+              "--repo", repository,
+              "--state", "open",
+              "--search", f"{report_title} in:title",
+              "--json", "number,title"
+          ])
+
+          existing_issues = json.loads(existing_issues_json) if existing_issues_json else []
+
+          matching_issue = next(
+              (issue for issue in existing_issues if issue["title"] == report_title),
+              None
+          )
+
+          if matching_issue:
+              issue_number = str(matching_issue["number"])
+
+              run_command([
+                  "gh", "issue", "edit", issue_number,
+                  "--repo", repository,
+                  "--body-file", "stale-work-report.md",
+                  "--add-assignee", product_owner,
+                  "--add-label", "stale-work",
+                  "--add-label", "process",
+                  "--add-label", "product-owner-review"
+              ])
+
+              print(f"Updated stale work report issue #{issue_number}")
+          else:
+              output = run_command([
+                  "gh", "issue", "create",
+                  "--repo", repository,
+                  "--title", report_title,
+                  "--body-file", "stale-work-report.md",
+                  "--assignee", product_owner,
+                  "--label", "stale-work",
+                  "--label", "process",
+                  "--label", "product-owner-review"
+              ])
+
+              print(output)
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_file:
+              summary_file.write("## Stale work monitor\n\n")
+              summary_file.write(f"Report issue: `{report_title}`\n\n")
+              summary_file.write(f"Open PRs scanned: `{len(prs)}`\n\n")
+              summary_file.write(f"Branches scanned: `{len(branches)}`\n\n")
+              summary_file.write("The stale work report issue was created or updated successfully.\n")
+          PY
