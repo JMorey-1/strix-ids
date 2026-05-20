@@ -14,11 +14,13 @@ import org.springframework.mock.web.MockHttpServletResponse;
 @ExtendWith(OutputCaptureExtension.class)
 class RequestLoggingFilterTest {
 
+  private static final String TEST_IDS_URL = "http://localhost:8081/events/request";
+
   @Test
   void doFilter_WithForwardedForHeader_ShouldLogForwardedIp(CapturedOutput output)
       throws Exception {
     // Create filter
-    RequestLoggingFilter filter = new RequestLoggingFilter();
+    RequestLoggingFilter filter = new RequestLoggingFilter(TEST_IDS_URL);
 
     // Create mock request
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/products");
@@ -42,7 +44,7 @@ class RequestLoggingFilterTest {
   void doFilter_WithoutForwardedForHeader_ShouldLogRemoteAddress(CapturedOutput output)
       throws Exception {
     // Create filter
-    RequestLoggingFilter filter = new RequestLoggingFilter();
+    RequestLoggingFilter filter = new RequestLoggingFilter(TEST_IDS_URL);
 
     // Create mock request
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/health");
@@ -66,7 +68,7 @@ class RequestLoggingFilterTest {
   void doFilter_WhenResponseIsForbidden_ShouldLogForbiddenStatus(CapturedOutput output)
       throws Exception {
     // Create filter
-    RequestLoggingFilter filter = new RequestLoggingFilter();
+    RequestLoggingFilter filter = new RequestLoggingFilter(TEST_IDS_URL);
 
     // Create mock request
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/admin");
@@ -93,7 +95,7 @@ class RequestLoggingFilterTest {
   void doFilter_WhenResponseIsNotFound_ShouldLogNotFoundStatus(CapturedOutput output)
       throws Exception {
     // Create filter
-    RequestLoggingFilter filter = new RequestLoggingFilter();
+    RequestLoggingFilter filter = new RequestLoggingFilter(TEST_IDS_URL);
 
     // Create mock request
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/unknown");

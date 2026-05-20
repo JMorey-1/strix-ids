@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -28,10 +29,15 @@ import org.springframework.stereotype.Component;
 @SuppressWarnings("java:S106")
 public class RequestLoggingFilter implements Filter {
 
-  private static final String IDS_URL = "http://localhost:8081/events/request";
+  private final String idsUrl;
 
   // Reused client for sending request events to the IDS.
   private final HttpClient httpClient = HttpClient.newHttpClient();
+
+  public RequestLoggingFilter(
+      @Value("${strix.ids.url:http://localhost:8081/events/request}") String idsUrl) {
+    this.idsUrl = idsUrl;
+  }
 
   @Override
   public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -60,7 +66,7 @@ public class RequestLoggingFilter implements Filter {
     /*
      * The wrapper lets me read the final response status after the controller runs.
      * Without this, I would only know the request details, not whether it returned
-     * 404, etc
+     * 404, etc.
      */
     StatusCapturingResponseWrapper responseWrapper =
         new StatusCapturingResponseWrapper((HttpServletResponse) response);
@@ -95,13 +101,13 @@ public class RequestLoggingFilter implements Filter {
 
     HttpRequest request =
         HttpRequest.newBuilder()
-            .uri(URI.create(IDS_URL))
+            .uri(URI.create(idsUrl))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
 
     /*
-     * Send asynchronously so the target app does not wait for the IDS before to respond.
+     * Send asynchronously so the target app does not wait for the IDS before it responds.
      */
     httpClient
         .sendAsync(request, HttpResponse.BodyHandlers.ofString())
