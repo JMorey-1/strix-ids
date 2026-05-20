@@ -7,7 +7,7 @@ The project is being developed as part of a DevOps pipeline implementation. The 
 ## Repository Structure
 
 - `strix-ids` - the main intrusion detection service
-- `target-app` - the monitored Spring Boot application used to generate request activity
+- `target-app` - the monitored Spring Boot web application used to generate request activity
 - `traffic-generator` - a utility for simulating normal and suspicious traffic
 - `docs` - supporting documentation and pipeline evidence
 
