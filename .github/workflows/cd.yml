@@ -303,6 +303,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Production deploys the approved image set to Azure Container Apps.
+  # If smoke checks fail, the previously running production images are restored.
   production:
     name: Deploy to production
     runs-on: ubuntu-latest
@@ -328,6 +329,37 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current production images
+        id: current
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_IDS_APP_NAME: ${{ vars.AZURE_IDS_APP_NAME }}
+          AZURE_TARGET_APP_NAME: ${{ vars.AZURE_TARGET_APP_NAME }}
+        run: |
+          CURRENT_IDS_IMAGE=$(az containerapp show \
+            --name "$AZURE_IDS_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.template.containers[0].image" \
+            -o tsv)
+
+          CURRENT_TARGET_APP_IMAGE=$(az containerapp show \
+            --name "$AZURE_TARGET_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.template.containers[0].image" \
+            -o tsv)
+
+          {
+            echo "current_ids_image=${CURRENT_IDS_IMAGE}"
+            echo "current_target_app_image=${CURRENT_TARGET_APP_IMAGE}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Current production image set"
+            echo ""
+            echo "- Current Strix IDS image: \`${CURRENT_IDS_IMAGE}\`"
+            echo "- Current target app image: \`${CURRENT_TARGET_APP_IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deploy Strix IDS
         env:
@@ -409,6 +441,8 @@ jobs:
           echo "Target app URL: ${TARGET_APP_URL}"
 
       - name: Run Azure smoke checks
+        id: smoke
+        continue-on-error: true
         env:
           IDS_URL: ${{ steps.ids.outputs.ids_url }}
           TARGET_APP_URL: ${{ steps.target.outputs.target_app_url }}
@@ -440,7 +474,92 @@ jobs:
           sleep 3
           wait_for_url "${IDS_URL}/api/status"
 
+      - name: Auto rollback production deployment
+        if: steps.smoke.outcome == 'failure'
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_IDS_APP_NAME: ${{ vars.AZURE_IDS_APP_NAME }}
+          AZURE_TARGET_APP_NAME: ${{ vars.AZURE_TARGET_APP_NAME }}
+          PREVIOUS_IDS_IMAGE: ${{ steps.current.outputs.current_ids_image }}
+          PREVIOUS_TARGET_APP_IMAGE: ${{ steps.current.outputs.current_target_app_image }}
+          IDS_EVENT_URL: ${{ steps.ids.outputs.ids_event_url }}
+        run: |
+          echo "Production smoke checks failed. Restoring previous production image set."
+
+          az containerapp update \
+            --name "$AZURE_IDS_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$PREVIOUS_IDS_IMAGE" \
+            --set-env-vars SPRING_DATASOURCE_URL=jdbc:h2:mem:strix-azure
+
+          az containerapp ingress enable \
+            --name "$AZURE_IDS_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --type external \
+            --target-port 8081 \
+            --transport auto
+
+          az containerapp update \
+            --name "$AZURE_TARGET_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$PREVIOUS_TARGET_APP_IMAGE" \
+            --set-env-vars STRIX_IDS_URL="$IDS_EVENT_URL"
+
+          az containerapp ingress enable \
+            --name "$AZURE_TARGET_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --type external \
+            --target-port 8080 \
+            --transport auto
+
+          {
+            echo "## Automatic rollback"
+            echo ""
+            echo "Production smoke checks failed, so the previous image set was restored."
+            echo ""
+            echo "### Restored image set"
+            echo "- Strix IDS: \`${PREVIOUS_IDS_IMAGE}\`"
+            echo "- Target app: \`${PREVIOUS_TARGET_APP_IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify rollback
+        if: steps.smoke.outcome == 'failure'
+        env:
+          IDS_URL: ${{ steps.ids.outputs.ids_url }}
+          TARGET_APP_URL: ${{ steps.target.outputs.target_app_url }}
+        run: |
+          wait_for_url() {
+            url="$1"
+
+            for _ in {1..60}; do
+              if curl -fsS "$url" > /dev/null; then
+                echo "Rollback smoke check passed: $url"
+                return 0
+              fi
+
+              sleep 5
+            done
+
+            echo "Timed out waiting for rollback URL: $url"
+            return 1
+          }
+
+          wait_for_url "${IDS_URL}/model/status"
+          wait_for_url "${IDS_URL}/dashboard.html"
+          wait_for_url "${IDS_URL}/api/status"
+
+          wait_for_url "${TARGET_APP_URL}/health"
+          wait_for_url "${TARGET_APP_URL}/products"
+
+      - name: Fail deployment after rollback
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          echo "Production deployment failed smoke checks and was rolled back."
+          echo "Failing the job so no GitHub Release is created for this deployment."
+          exit 1
+
       - name: Record production deployment
+        if: steps.smoke.outcome == 'success'
         env:
           IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
           TARGET_APP_IMAGE: ${{ needs.prepare.outputs.target_app_image }}
@@ -470,6 +589,7 @@ jobs:
             echo "- Target app: ${TARGET_APP_URL}"
             echo ""
             echo "Azure smoke checks: passed"
+            echo "Automatic rollback: not required"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Create the GitHub Release only after production deployment succeeds.
