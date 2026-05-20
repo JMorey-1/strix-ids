@@ -15,6 +15,9 @@ allprojects {
 }
 
 subprojects {
+    // Override Spring Boot's managed Tomcat version because Trivy flagged 10.1.54.
+    ext['tomcat.version'] = '10.1.55'
+
     apply plugin: 'java'
     apply plugin: 'jacoco'
     apply plugin: 'com.diffplug.spotless'
