@@ -115,7 +115,7 @@ class RequestLoggingFilterTest {
     assertThat(response.getStatus()).isEqualTo(404);
 
     // Check logged request
-      // Minor change to trigger lint workflow for demo
+    // Minor change to trigger lint workflow for demo
     assertThat(output).contains("[REQUEST] GET /unknown from 10.0.0.99 -> 404");
   }
 }
