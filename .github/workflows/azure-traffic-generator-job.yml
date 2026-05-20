@@ -1,0 +1,285 @@
+name: Azure Traffic Generator Job
+
+# This workflow runs the Strix traffic generator against the deployed Azure environment.
+# It is manual so traffic simulation stays controlled and does not run on every deployment.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing full commit SHA image tag to run. Leave blank to use the current default branch SHA."
+        required: false
+        default: ""
+        type: string
+
+      target_app_url:
+        description: "Optional target app URL override. Leave blank to resolve from Azure Container Apps."
+        required: false
+        default: ""
+        type: string
+
+      ids_url:
+        description: "Optional Strix IDS URL override. Leave blank to resolve from Azure Container Apps."
+        required: false
+        default: ""
+        type: string
+
+# Only one traffic generator run should be started from this workflow at a time.
+concurrency:
+  group: azure-traffic-generator-job
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  run-traffic-generator:
+    name: Run Azure traffic generator
+    runs-on: ubuntu-latest
+
+    # Uses the protected production environment so Azure OIDC credentials stay gated.
+    environment:
+      name: production
+
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+
+    steps:
+      # Work out which immutable traffic-generator image should be used.
+      - name: Prepare traffic generator metadata
+        id: meta
+        shell: bash
+        env:
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+          TARGET_APP_URL_INPUT: ${{ inputs.target_app_url }}
+          IDS_URL_INPUT: ${{ inputs.ids_url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -n "$IMAGE_TAG_INPUT" ]]; then
+            IMAGE_TAG="$IMAGE_TAG_INPUT"
+          else
+            IMAGE_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq '.sha')
+          fi
+
+          if [[ ! "$IMAGE_TAG" =~ ^[A-Fa-f0-9]{40}$ ]]; then
+            echo "Invalid image tag: $IMAGE_TAG"
+            echo "Expected a full 40-character commit SHA."
+            exit 1
+          fi
+
+          OWNER_LC=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          REPO_LC=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAMESPACE="${REGISTRY}/${OWNER_LC}/${REPO_LC}"
+
+          TRAFFIC_GENERATOR_IMAGE="${IMAGE_NAMESPACE}/traffic-generator:${IMAGE_TAG}"
+
+          {
+            echo "image_tag=${IMAGE_TAG}"
+            echo "traffic_generator_image=${TRAFFIC_GENERATOR_IMAGE}"
+            echo "target_app_url_input=${TARGET_APP_URL_INPUT}"
+            echo "ids_url_input=${IDS_URL_INPUT}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Azure traffic generator metadata"
+            echo ""
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo "Traffic generator image: \`${TRAFFIC_GENERATOR_IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Check the selected image exists in GHCR before touching Azure.
+      - name: Validate traffic generator image exists
+        env:
+          TRAFFIC_GENERATOR_IMAGE: ${{ steps.meta.outputs.traffic_generator_image }}
+        run: |
+          docker buildx imagetools inspect "$TRAFFIC_GENERATOR_IMAGE"
+
+      # Authenticate to Azure using the existing OIDC setup.
+      - name: Log in to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Resolve the deployed Azure URLs unless manual overrides were supplied.
+      - name: Resolve Azure service URLs
+        id: urls
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_IDS_APP_NAME: ${{ vars.AZURE_IDS_APP_NAME }}
+          AZURE_TARGET_APP_NAME: ${{ vars.AZURE_TARGET_APP_NAME }}
+          TARGET_APP_URL_INPUT: ${{ steps.meta.outputs.target_app_url_input }}
+          IDS_URL_INPUT: ${{ steps.meta.outputs.ids_url_input }}
+        run: |
+          if [[ -n "$IDS_URL_INPUT" ]]; then
+            IDS_URL="$IDS_URL_INPUT"
+          else
+            IDS_FQDN=$(az containerapp show \
+              --name "$AZURE_IDS_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --query "properties.configuration.ingress.fqdn" \
+              -o tsv)
+
+            IDS_URL="https://${IDS_FQDN}"
+          fi
+
+          if [[ -n "$TARGET_APP_URL_INPUT" ]]; then
+            TARGET_APP_URL="$TARGET_APP_URL_INPUT"
+          else
+            TARGET_APP_FQDN=$(az containerapp show \
+              --name "$AZURE_TARGET_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --query "properties.configuration.ingress.fqdn" \
+              -o tsv)
+
+            TARGET_APP_URL="https://${TARGET_APP_FQDN}"
+          fi
+
+          {
+            echo "ids_url=${IDS_URL}"
+            echo "target_app_url=${TARGET_APP_URL}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo ""
+            echo "### Resolved Azure URLs"
+            echo "- Strix IDS: ${IDS_URL}"
+            echo "- Target app: ${TARGET_APP_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Make sure the deployed services are reachable before starting the generator.
+      - name: Check deployed services are reachable
+        shell: bash
+        env:
+          IDS_URL: ${{ steps.urls.outputs.ids_url }}
+          TARGET_APP_URL: ${{ steps.urls.outputs.target_app_url }}
+        run: |
+          wait_for_url() {
+            url="$1"
+
+            for _ in {1..30}; do
+              if curl -fsS "$url" > /dev/null; then
+                echo "Service check passed: $url"
+                return 0
+              fi
+
+              sleep 5
+            done
+
+            echo "Timed out waiting for $url"
+            return 1
+          }
+
+          wait_for_url "${IDS_URL}/model/status"
+          wait_for_url "${TARGET_APP_URL}/health"
+
+      # Create the Azure job if it does not exist, otherwise update the existing job definition.
+      - name: Create or update traffic generator job
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINERAPPS_ENVIRONMENT: ${{ vars.AZURE_CONTAINERAPPS_ENVIRONMENT }}
+          AZURE_TRAFFIC_JOB_NAME: ${{ vars.AZURE_TRAFFIC_JOB_NAME }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ steps.meta.outputs.traffic_generator_image }}
+          TARGET_APP_URL: ${{ steps.urls.outputs.target_app_url }}
+          IDS_URL: ${{ steps.urls.outputs.ids_url }}
+        run: |
+          TRAFFIC_JOB_NAME="${AZURE_TRAFFIC_JOB_NAME:-strix-traffic-generator}"
+
+          if az containerapp job show \
+            --name "$TRAFFIC_JOB_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            > /dev/null 2>&1; then
+
+            echo "Updating existing Container Apps Job: $TRAFFIC_JOB_NAME"
+
+            az containerapp job update \
+              --name "$TRAFFIC_JOB_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --image "$TRAFFIC_GENERATOR_IMAGE" \
+              --cpu 0.5 \
+              --memory 1.0Gi \
+              --parallelism 1 \
+              --replica-completion-count 1 \
+              --replica-timeout 600 \
+              --replica-retry-limit 0 \
+              --set-env-vars \
+                STRIX_TARGET_BASE_URL="$TARGET_APP_URL" \
+                STRIX_IDS_BASE_URL="$IDS_URL"
+          else
+            echo "Creating Container Apps Job: $TRAFFIC_JOB_NAME"
+
+            az containerapp job create \
+              --name "$TRAFFIC_JOB_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --environment "$AZURE_CONTAINERAPPS_ENVIRONMENT" \
+              --trigger-type Manual \
+              --image "$TRAFFIC_GENERATOR_IMAGE" \
+              --cpu 0.5 \
+              --memory 1.0Gi \
+              --parallelism 1 \
+              --replica-completion-count 1 \
+              --replica-timeout 600 \
+              --replica-retry-limit 0 \
+              --env-vars \
+                STRIX_TARGET_BASE_URL="$TARGET_APP_URL" \
+                STRIX_IDS_BASE_URL="$IDS_URL"
+          fi
+
+          {
+            echo "TRAFFIC_JOB_NAME=${TRAFFIC_JOB_NAME}"
+          } >> "$GITHUB_ENV"
+
+      # Start the manual Container Apps Job using the selected image and Azure URLs.
+      - name: Start traffic generator job
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ steps.meta.outputs.traffic_generator_image }}
+          TARGET_APP_URL: ${{ steps.urls.outputs.target_app_url }}
+          IDS_URL: ${{ steps.urls.outputs.ids_url }}
+        run: |
+          echo "Starting traffic generator job: $TRAFFIC_JOB_NAME"
+
+          az containerapp job start \
+            --name "$TRAFFIC_JOB_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$TRAFFIC_GENERATOR_IMAGE" \
+            --cpu 0.5 \
+            --memory 1.0Gi \
+            --env-vars \
+              STRIX_TARGET_BASE_URL="$TARGET_APP_URL" \
+              STRIX_IDS_BASE_URL="$IDS_URL"
+
+      # Write a clear run summary for screenshots, PR evidence and the DevOps report.
+      - name: Record traffic generator run
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+          TRAFFIC_GENERATOR_IMAGE: ${{ steps.meta.outputs.traffic_generator_image }}
+          TARGET_APP_URL: ${{ steps.urls.outputs.target_app_url }}
+          IDS_URL: ${{ steps.urls.outputs.ids_url }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINERAPPS_ENVIRONMENT: ${{ vars.AZURE_CONTAINERAPPS_ENVIRONMENT }}
+        run: |
+          {
+            echo "## Azure traffic generator run"
+            echo ""
+            echo "Resource group: \`${AZURE_RESOURCE_GROUP}\`"
+            echo "Container Apps environment: \`${AZURE_CONTAINERAPPS_ENVIRONMENT}\`"
+            echo "Job name: \`${TRAFFIC_JOB_NAME}\`"
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo ""
+            echo "### Image"
+            echo "- Traffic generator: \`${TRAFFIC_GENERATOR_IMAGE}\`"
+            echo ""
+            echo "### Runtime configuration"
+            echo "- STRIX_TARGET_BASE_URL: ${TARGET_APP_URL}"
+            echo "- STRIX_IDS_BASE_URL: ${IDS_URL}"
+            echo ""
+            echo "Status: traffic generator job started"
+          } >> "$GITHUB_STEP_SUMMARY"

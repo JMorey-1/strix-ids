@@ -18,8 +18,6 @@ Reviewers are expected to check whether a change works, but also whether it affe
 
 ## Promotion Approach
 
-## Image-Based Promotion
-
 The release workflow promotes published Docker images rather than rebuilding the application at each environment stage. The Docker image workflow builds, scans, generates SBOMs and publishes SHA-tagged images to GitHub Container Registry.
 
 The environment promotion workflow then accepts an image tag and uses that same tag through `dev`, `staging` and `production`. This supports the build-once, promote-same-artifact principle and improves traceability because each promoted image can be linked back to the commit that created it.
